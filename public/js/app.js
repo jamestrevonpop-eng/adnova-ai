@@ -1324,8 +1324,6 @@ if (
   );
 }
 
-ensureCodingSession();
-
 
 /* =========================================================
    CODING WORKSPACE
@@ -8536,3 +8534,37 @@ body{
   createCodingNewChat();
   scanCode();
 })();
+
+
+/* =========================================================
+   SAFE CODING INITIALIZATION
+   ========================================================= */
+
+window.addEventListener(
+  "load",
+  () => {
+    try {
+      ensureCodingSession();
+
+      if (
+        typeof createCodingWorkspace ===
+        "function"
+      ) {
+        createCodingWorkspace();
+      }
+
+      if (
+        typeof updateCodingWorkspaceState ===
+        "function"
+      ) {
+        updateCodingWorkspaceState();
+      }
+    } catch (error) {
+      console.error(
+        "Coding workspace initialization failed:",
+        error
+      );
+    }
+  },
+  { once: true }
+);
