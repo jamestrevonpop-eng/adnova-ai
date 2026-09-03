@@ -6589,3 +6589,912 @@ body{
 
   scanCodeBlocks();
 })();
+
+
+
+/* =========================================================
+   CODING WORKSPACE FINAL PATCH
+   ========================================================= */
+
+(function () {
+  const CODING_HISTORY_KEY =
+    "adnova_coding_history_v1";
+
+  const CODING_ACTIVE_KEY =
+    "adnova_coding_active_session_v1";
+
+  const CODING_DRAFT_KEY =
+    "adnova_coding_draft_v1";
+
+  let lastCodingSubmitAt = 0;
+
+  function getWorkspace() {
+    return document.getElementById("coding-workspace");
+  }
+
+  function getCodingInput() {
+    const workspace = getWorkspace();
+
+    if (!workspace) {
+      return null;
+    }
+
+    return workspace.querySelector(
+      "#coding-message-input, #coding-input, textarea"
+    );
+  }
+
+  function getCodingSendButton() {
+    const workspace = getWorkspace();
+
+    if (!workspace) {
+      return null;
+    }
+
+    return workspace.querySelector(
+      "#coding-send-button, [data-coding-send], .coding-send-button, button[aria-label*='send' i]"
+    );
+  }
+
+  function clearCodingInput() {
+    const input = getCodingInput();
+
+    if (!input) {
+      return;
+    }
+
+    input.value = "";
+
+    input.dispatchEvent(
+      new Event("input", {
+        bubbles: true
+      })
+    );
+
+    input.dispatchEvent(
+      new Event("change", {
+        bubbles: true
+      })
+    );
+
+    try {
+      localStorage.removeItem(
+        CODING_DRAFT_KEY
+      );
+    } catch {}
+
+    input.focus();
+  }
+
+  /*
+   * ---------------------------------------------------------
+   * CODING ENTER
+   * ---------------------------------------------------------
+   *
+   * Capture phase deliberately runs before every normal
+   * textarea listener so Enter cannot fall through and
+   * become a newline or trigger a second submission.
+   */
+
+  document.addEventListener(
+    "keydown",
+    event => {
+      const target =
+        event.target;
+
+      if (
+        !(target instanceof HTMLTextAreaElement)
+      ) {
+        return;
+      }
+
+      if (
+        !target.closest("#coding-workspace")
+      ) {
+        return;
+      }
+
+      if (
+        event.key !== "Enter" ||
+        event.shiftKey ||
+        event.ctrlKey ||
+        event.metaKey ||
+        event.altKey
+      ) {
+        return;
+      }
+
+      event.preventDefault();
+      event.stopPropagation();
+      event.stopImmediatePropagation();
+
+      const value =
+        String(target.value || "").trim();
+
+      if (!value) {
+        return;
+      }
+
+      const now =
+        Date.now();
+
+      if (
+        now - lastCodingSubmitAt < 500
+      ) {
+        return;
+      }
+
+      lastCodingSubmitAt =
+        now;
+
+      const form =
+        target.closest("form");
+
+      if (form) {
+        form.requestSubmit();
+      } else {
+        const button =
+          getCodingSendButton();
+
+        if (
+          button &&
+          !button.disabled
+        ) {
+          button.click();
+        }
+      }
+
+      /*
+       * Clear after the existing coding submit handler has
+       * consumed the message.
+       */
+      setTimeout(() => {
+        clearCodingInput();
+      }, 30);
+    },
+    true
+  );
+
+  /*
+   * Also clear when the coding form/button sends normally.
+   * This handles mouse clicks and existing custom handlers.
+   */
+
+  document.addEventListener(
+    "submit",
+    event => {
+      const form =
+        event.target;
+
+      if (
+        !(form instanceof HTMLFormElement)
+      ) {
+        return;
+      }
+
+      if (
+        !form.closest("#coding-workspace")
+      ) {
+        return;
+      }
+
+      setTimeout(() => {
+        clearCodingInput();
+      }, 30);
+    },
+    false
+  );
+
+  document.addEventListener(
+    "click",
+    event => {
+      const button =
+        event.target.closest?.(
+          "#coding-send-button, [data-coding-send], .coding-send-button"
+        );
+
+      if (!button) {
+        return;
+      }
+
+      if (
+        !button.closest("#coding-workspace")
+      ) {
+        return;
+      }
+
+      setTimeout(() => {
+        clearCodingInput();
+      }, 30);
+    },
+    false
+  );
+
+  /*
+   * ---------------------------------------------------------
+   * NEW CODING CHAT
+   * ---------------------------------------------------------
+   */
+
+  function createCodingNewChat() {
+    const workspace =
+      getWorkspace();
+
+    if (!workspace) {
+      return;
+    }
+
+    if (
+      workspace.querySelector(
+        "#coding-new-chat"
+      )
+    ) {
+      return;
+    }
+
+    const header =
+      workspace.querySelector(
+        ".coding-workspace-header, .coding-header"
+      );
+
+    if (!header) {
+      return;
+    }
+
+    const button =
+      document.createElement("button");
+
+    button.id =
+      "coding-new-chat";
+
+    button.type =
+      "button";
+
+    button.className =
+      "coding-new-chat";
+
+    button.innerHTML = `
+      <svg
+        viewBox="0 0 20 20"
+        aria-hidden="true"
+      >
+        <path d="M10 4v12"></path>
+        <path d="M4 10h12"></path>
+      </svg>
+
+      <span>New chat</span>
+    `;
+
+    button.addEventListener(
+      "click",
+      event => {
+        event.preventDefault();
+        event.stopPropagation();
+
+        if (
+          isGenerating &&
+          typeof stopGeneration === "function"
+        ) {
+          stopGeneration();
+        }
+
+        clearCodingInput();
+
+        try {
+          localStorage.removeItem(
+            CODING_DRAFT_KEY
+          );
+        } catch {}
+
+        const sessionId =
+          `coding-${Date.now()}-${Math.random()
+            .toString(36)
+            .slice(2, 9)}`;
+
+        try {
+          localStorage.setItem(
+            CODING_ACTIVE_KEY,
+            sessionId
+          );
+        } catch {}
+
+        const output =
+          workspace.querySelector(
+            "#coding-output, .coding-output, .coding-response"
+          );
+
+        if (output) {
+          output.innerHTML = `
+            <div class="coding-empty-state">
+              <div class="coding-empty-state-title">
+                New coding session
+              </div>
+
+              <div class="coding-empty-state-text">
+                Your new coding conversation is ready.
+              </div>
+            </div>
+          `;
+        }
+
+        workspace.dataset.codingSessionId =
+          sessionId;
+
+        const steps =
+          workspace.querySelectorAll(
+            ".coding-workflow-step, .coding-activity-step"
+          );
+
+        steps.forEach(step => {
+          step.classList.remove(
+            "active",
+            "complete"
+          );
+        });
+
+        const prepare =
+          workspace.querySelector(
+            "[data-stage='prepare'], [data-workflow='prepare']"
+          );
+
+        prepare?.classList.add(
+          "active"
+        );
+
+        setTimeout(() => {
+          clearCodingInput();
+        }, 50);
+      }
+    );
+
+    header.appendChild(
+      button
+    );
+  }
+
+  /*
+   * ---------------------------------------------------------
+   * CODE PREVIEW / RUN
+   * ---------------------------------------------------------
+   */
+
+  function languageForBlock(block) {
+    return String(
+      block.querySelector(
+        ".code-language"
+      )?.textContent || ""
+    )
+      .trim()
+      .toLowerCase();
+  }
+
+  function codeForBlock(block) {
+    return (
+      block.querySelector(
+        "pre code"
+      )?.textContent || ""
+    ).trim();
+  }
+
+  function canRun(language) {
+    return [
+      "html",
+      "htm",
+      "css",
+      "javascript",
+      "js",
+      "svg"
+    ].includes(language);
+  }
+
+  function makePreview(code, language) {
+    if (
+      language === "html" ||
+      language === "htm"
+    ) {
+      return code;
+    }
+
+    if (language === "css") {
+      return `
+<!doctype html>
+<html>
+<head>
+<meta charset="UTF-8">
+<style>
+${code}
+</style>
+</head>
+<body>
+<div class="preview-root">
+  <h1>Adnova Preview</h1>
+  <p>Live CSS preview.</p>
+  <button>Test button</button>
+</div>
+</body>
+</html>`;
+    }
+
+    if (language === "svg") {
+      return `
+<!doctype html>
+<html>
+<head>
+<meta charset="UTF-8">
+<style>
+html,body{
+  margin:0;
+  width:100%;
+  height:100%;
+}
+body{
+  display:grid;
+  place-items:center;
+}
+svg{
+  max-width:90%;
+  max-height:90%;
+}
+</style>
+</head>
+<body>
+${code}
+</body>
+</html>`;
+    }
+
+    if (
+      language === "javascript" ||
+      language === "js"
+    ) {
+      return `
+<!doctype html>
+<html>
+<head>
+<meta charset="UTF-8">
+<style>
+body{
+  margin:0;
+  padding:24px;
+  font-family:system-ui,sans-serif;
+  color:#0f172a;
+  background:#fff;
+}
+#root{
+  padding:20px;
+  border:1px solid #e2e8f0;
+  border-radius:14px;
+}
+#console{
+  margin-top:14px;
+  padding:12px;
+  white-space:pre-wrap;
+  border:1px solid #e2e8f0;
+  border-radius:10px;
+  background:#f8fafc;
+  font-family:monospace;
+  font-size:12px;
+}
+</style>
+</head>
+<body>
+<div id="root"></div>
+<div id="console">Console output:</div>
+
+<script>
+(() => {
+  const consoleBox =
+    document.getElementById("console");
+
+  const originalLog =
+    console.log;
+
+  console.log = (...args) => {
+    consoleBox.textContent +=
+      "\\n" +
+      args
+        .map(value => {
+          try {
+            return typeof value === "string"
+              ? value
+              : JSON.stringify(value);
+          } catch {
+            return String(value);
+          }
+        })
+        .join(" ");
+
+    originalLog(...args);
+  };
+
+  window.addEventListener(
+    "error",
+    event => {
+      consoleBox.textContent +=
+        "\\n[ERROR] " +
+        (
+          event.message ||
+          "Runtime error"
+        );
+    }
+  );
+
+  try {
+    ${code}
+  } catch (error) {
+    consoleBox.textContent +=
+      "\\n[ERROR] " +
+      (
+        error?.message ||
+        String(error)
+      );
+  }
+})();
+</script>
+</body>
+</html>`;
+    }
+
+    return code;
+  }
+
+  function showPreview(code, language) {
+    let overlay =
+      document.getElementById(
+        "coding-preview-overlay"
+      );
+
+    if (!overlay) {
+      overlay =
+        document.createElement("div");
+
+      overlay.id =
+        "coding-preview-overlay";
+
+      overlay.className =
+        "coding-preview-overlay";
+
+      overlay.innerHTML = `
+        <div class="coding-preview-backdrop"></div>
+
+        <div class="coding-preview-window">
+          <div class="coding-preview-header">
+            <div>
+              <div class="coding-preview-eyebrow">
+                LIVE CODE
+              </div>
+
+              <div class="coding-preview-title">
+                Running preview
+              </div>
+            </div>
+
+            <button
+              type="button"
+              class="coding-preview-close"
+            >
+              ×
+            </button>
+          </div>
+
+          <div class="coding-preview-body">
+            <iframe
+              class="coding-preview-frame"
+              sandbox="allow-scripts"
+              title="Live code preview"
+            ></iframe>
+          </div>
+        </div>
+      `;
+
+      document.body.appendChild(
+        overlay
+      );
+
+      const close =
+        () => {
+          overlay.classList.remove(
+            "open"
+          );
+
+          const frame =
+            overlay.querySelector(
+              ".coding-preview-frame"
+            );
+
+          if (frame) {
+            frame.srcdoc =
+              "<!doctype html><html><body></body></html>";
+          }
+        };
+
+      overlay
+        .querySelector(
+          ".coding-preview-backdrop"
+        )
+        .addEventListener(
+          "click",
+          close
+        );
+
+      overlay
+        .querySelector(
+          ".coding-preview-close"
+        )
+        .addEventListener(
+          "click",
+          close
+        );
+    }
+
+    const frame =
+      overlay.querySelector(
+        ".coding-preview-frame"
+      );
+
+    if (!frame) {
+      return;
+    }
+
+    frame.srcdoc =
+      makePreview(
+        code,
+        language
+      );
+
+    overlay.classList.add(
+      "open"
+    );
+  }
+
+  function addCodeControls(block) {
+    if (!block) {
+      return;
+    }
+
+    const header =
+      block.querySelector(
+        ".code-header"
+      );
+
+    if (!header) {
+      return;
+    }
+
+    const language =
+      languageForBlock(block);
+
+    if (
+      !canRun(language)
+    ) {
+      return;
+    }
+
+    if (
+      !header.querySelector(
+        ".coding-run-button"
+      )
+    ) {
+      const runButton =
+        document.createElement(
+          "button"
+        );
+
+      runButton.type =
+        "button";
+
+      runButton.className =
+        "coding-run-button";
+
+      runButton.textContent =
+        "Run";
+
+      runButton.title =
+        "Run this code";
+
+      runButton.addEventListener(
+        "click",
+        event => {
+          event.preventDefault();
+          event.stopPropagation();
+
+          showPreview(
+            codeForBlock(block),
+            languageForBlock(block)
+          );
+        }
+      );
+
+      header.appendChild(
+        runButton
+      );
+    }
+
+    if (
+      !header.querySelector(
+        ".coding-open-button"
+      )
+    ) {
+      const openButton =
+        document.createElement(
+          "button"
+        );
+
+      openButton.type =
+        "button";
+
+      openButton.className =
+        "coding-open-button";
+
+      openButton.textContent =
+        "Open in coding";
+
+      openButton.title =
+        "Open this code in Coding mode";
+
+      openButton.addEventListener(
+        "click",
+        event => {
+          event.preventDefault();
+          event.stopPropagation();
+
+          setCurrentMode(
+            "coding"
+          );
+
+          const input =
+            getCodingInput();
+
+          if (!input) {
+            return;
+          }
+
+          input.value =
+            [
+              "Work with this code:",
+              "",
+              "```" +
+              language +
+              "\n" +
+              codeForBlock(block) +
+              "\n```"
+            ].join("\n");
+
+          input.dispatchEvent(
+            new Event("input", {
+              bubbles: true
+            })
+          );
+
+          input.focus();
+
+          try {
+            localStorage.setItem(
+              CODING_DRAFT_KEY,
+              input.value
+            );
+          } catch {}
+        }
+      );
+
+      header.appendChild(
+        openButton
+      );
+    }
+  }
+
+  function scanCode() {
+    document
+      .querySelectorAll(
+        ".code-block"
+      )
+      .forEach(
+        addCodeControls
+      );
+  }
+
+  /*
+   * ---------------------------------------------------------
+   * KEEP EVERYTHING WORKING AFTER STREAMING
+   * ---------------------------------------------------------
+   */
+
+  const observer =
+    new MutationObserver(() => {
+      createCodingNewChat();
+      scanCode();
+    });
+
+  observer.observe(
+    document.body,
+    {
+      childList: true,
+      subtree: true
+    }
+  );
+
+  /*
+   * Restore draft whenever Coding mode exists.
+   */
+
+  function restoreDraft() {
+    if (
+      currentMode !== "coding"
+    ) {
+      return;
+    }
+
+    const input =
+      getCodingInput();
+
+    if (!input) {
+      return;
+    }
+
+    if (
+      input.value.trim()
+    ) {
+      return;
+    }
+
+    try {
+      const draft =
+        localStorage.getItem(
+          CODING_DRAFT_KEY
+        );
+
+      if (draft) {
+        input.value =
+          draft;
+
+        input.dispatchEvent(
+          new Event("input", {
+            bubbles: true
+          })
+        );
+      }
+    } catch {}
+  }
+
+  document.addEventListener(
+    "input",
+    event => {
+      const input =
+        event.target;
+
+      if (
+        !(input instanceof HTMLTextAreaElement)
+      ) {
+        return;
+      }
+
+      if (
+        !input.closest(
+          "#coding-workspace"
+        )
+      ) {
+        return;
+      }
+
+      try {
+        localStorage.setItem(
+          CODING_DRAFT_KEY,
+          input.value
+        );
+      } catch {}
+    }
+  );
+
+  setInterval(() => {
+    if (
+      currentMode === "coding"
+    ) {
+      createCodingNewChat();
+      scanCode();
+      restoreDraft();
+    }
+  }, 700);
+
+  createCodingNewChat();
+  scanCode();
+})();
