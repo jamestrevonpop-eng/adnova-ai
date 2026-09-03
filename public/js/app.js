@@ -5028,3 +5028,737 @@ function watchCodingWorkspace() {
 }
 
 watchCodingWorkspace();
+
+
+/* =========================================================
+   CODING NEXT BATCH
+   ========================================================= */
+
+(function installCodingNextBatch() {
+  const CODING_HISTORY_KEY =
+    "adnova_coding_history_v1";
+
+  const CODING_DRAFT_KEY =
+    "adnova_coding_draft_v1";
+
+  let codingSessionCounter = 0;
+
+  function codingWorkspace() {
+    return document.getElementById("coding-workspace");
+  }
+
+  function codingInput() {
+    const workspace = codingWorkspace();
+
+    if (!workspace) {
+      return null;
+    }
+
+    return (
+      workspace.querySelector("#coding-message-input") ||
+      workspace.querySelector("#coding-input") ||
+      workspace.querySelector("textarea")
+    );
+  }
+
+  function codingSendButton() {
+    const workspace = codingWorkspace();
+
+    if (!workspace) {
+      return null;
+    }
+
+    return (
+      workspace.querySelector("#coding-send-button") ||
+      workspace.querySelector("[data-coding-send]") ||
+      workspace.querySelector(".coding-send-button") ||
+      workspace.querySelector(".coding-composer button[type='submit']") ||
+      workspace.querySelector("button[aria-label*='send' i]")
+    );
+  }
+
+  function codingOutput() {
+    const workspace = codingWorkspace();
+
+    if (!workspace) {
+      return null;
+    }
+
+    return (
+      workspace.querySelector("#coding-output") ||
+      workspace.querySelector(".coding-output") ||
+      workspace.querySelector(".coding-workspace-output") ||
+      workspace.querySelector(".coding-response") ||
+      workspace.querySelector(".coding-workspace-main")
+    );
+  }
+
+  function startNewCodingChat() {
+    const input = codingInput();
+
+    if (isGenerating && typeof stopGeneration === "function") {
+      stopGeneration();
+    }
+
+    try {
+      localStorage.removeItem(CODING_DRAFT_KEY);
+    } catch {
+      // Ignore localStorage errors.
+    }
+
+    codingSessionCounter += 1;
+
+    const workspace = codingWorkspace();
+
+    if (workspace) {
+      workspace.dataset.codingSessionId =
+        `coding-${Date.now()}-${codingSessionCounter}`;
+    }
+
+    if (input) {
+      input.value = "";
+
+      input.dispatchEvent(
+        new Event("input", {
+          bubbles: true
+        })
+      );
+
+      input.focus();
+    }
+
+    const output = codingOutput();
+
+    if (output) {
+      const children = Array.from(output.children);
+
+      children.forEach(child => {
+        child.remove();
+      });
+
+      output.innerHTML = `
+        <div class="coding-empty-state">
+          <div class="coding-empty-state-title">
+            New coding session
+          </div>
+
+          <div class="coding-empty-state-text">
+            Start a new task and your coding work will stay in this session.
+          </div>
+        </div>
+      `;
+    }
+
+    const workspaceSessionList =
+      workspace?.querySelector(
+        ".coding-session-list, .coding-history-list, [data-coding-history]"
+      );
+
+    if (
+      workspaceSessionList &&
+      typeof renderCodingHistory === "function"
+    ) {
+      try {
+        renderCodingHistory();
+      } catch {
+        // Keep UI usable if an older history renderer has a different signature.
+      }
+    }
+  }
+
+  function ensureCodingNewChatButton() {
+    const workspace = codingWorkspace();
+
+    if (!workspace) {
+      return;
+    }
+
+    if (
+      workspace.querySelector(
+        "#coding-new-chat-button"
+      )
+    ) {
+      return;
+    }
+
+    const header =
+      workspace.querySelector(
+        ".coding-workspace-header"
+      ) ||
+      workspace.querySelector(
+        ".coding-header"
+      ) ||
+      workspace.firstElementChild;
+
+    if (!header) {
+      return;
+    }
+
+    const button =
+      document.createElement("button");
+
+    button.id =
+      "coding-new-chat-button";
+
+    button.type =
+      "button";
+
+    button.className =
+      "coding-new-chat-button";
+
+    button.setAttribute(
+      "aria-label",
+      "New coding chat"
+    );
+
+    button.title =
+      "New coding chat";
+
+    button.innerHTML = `
+      <svg
+        viewBox="0 0 20 20"
+        aria-hidden="true"
+      >
+        <path d="M10 4v12"></path>
+        <path d="M4 10h12"></path>
+      </svg>
+
+      <span>New chat</span>
+    `;
+
+    button.addEventListener(
+      "click",
+      event => {
+        event.preventDefault();
+        event.stopPropagation();
+
+        startNewCodingChat();
+      }
+    );
+
+    header.appendChild(button);
+  }
+
+  function submitCodingComposer() {
+    const input = codingInput();
+
+    if (!input) {
+      return;
+    }
+
+    const text =
+      String(input.value || "").trim();
+
+    if (!text) {
+      return;
+    }
+
+    const form =
+      input.closest("form");
+
+    if (form) {
+      form.requestSubmit();
+      return;
+    }
+
+    const button =
+      codingSendButton();
+
+    if (
+      button &&
+      !button.disabled
+    ) {
+      button.click();
+    }
+  }
+
+  /*
+   * Capture phase is intentional.
+   *
+   * This runs before any textarea/default form handlers,
+   * which makes Enter reliable even if another listener exists.
+   */
+  document.addEventListener(
+    "keydown",
+    event => {
+      const target =
+        event.target;
+
+      if (
+        !(target instanceof HTMLTextAreaElement)
+      ) {
+        return;
+      }
+
+      const workspace =
+        target.closest("#coding-workspace");
+
+      if (!workspace) {
+        return;
+      }
+
+      if (
+        event.key !== "Enter" ||
+        event.shiftKey ||
+        event.ctrlKey ||
+        event.metaKey ||
+        event.altKey
+      ) {
+        return;
+      }
+
+      event.preventDefault();
+      event.stopPropagation();
+      event.stopImmediatePropagation();
+
+      submitCodingComposer();
+    },
+    true
+  );
+
+  /*
+   * Visual code preview
+   */
+
+  function getCodeLanguage(codeBlock) {
+    const language =
+      codeBlock.querySelector(
+        ".code-language"
+      );
+
+    return String(
+      language?.textContent || ""
+    )
+      .trim()
+      .toLowerCase();
+  }
+
+  function getCodeText(codeBlock) {
+    return (
+      codeBlock.querySelector("pre code")?.textContent ||
+      ""
+    ).trim();
+  }
+
+  function canPreview(language) {
+    return [
+      "html",
+      "htm",
+      "css",
+      "javascript",
+      "js",
+      "svg"
+    ].includes(language);
+  }
+
+  function buildPreviewDocument(
+    code,
+    language
+  ) {
+    if (
+      language === "svg"
+    ) {
+      return `
+<!doctype html>
+<html>
+<head>
+<meta charset="UTF-8">
+<style>
+html,body{
+  margin:0;
+  width:100%;
+  height:100%;
+  background:#fff;
+}
+body{
+  display:grid;
+  place-items:center;
+  overflow:auto;
+}
+svg{
+  max-width:90%;
+  max-height:90%;
+}
+</style>
+</head>
+<body>
+${code}
+</body>
+</html>`;
+    }
+
+    if (
+      language === "css"
+    ) {
+      return `
+<!doctype html>
+<html>
+<head>
+<meta charset="UTF-8">
+<style>
+${code}
+</style>
+</head>
+<body>
+<main class="preview-page">
+  <h1>Adnova Preview</h1>
+  <p>This page is using the CSS from the generated code.</p>
+  <button>Example button</button>
+  <div class="preview-card">
+    Preview content
+  </div>
+</main>
+</body>
+</html>`;
+    }
+
+    if (
+      language === "javascript" ||
+      language === "js"
+    ) {
+      return `
+<!doctype html>
+<html>
+<head>
+<meta charset="UTF-8">
+<style>
+body{
+  margin:0;
+  padding:24px;
+  font-family:system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+  background:#fff;
+  color:#0f172a;
+}
+#preview-root{
+  min-height:120px;
+  padding:20px;
+  border:1px solid #e2e8f0;
+  border-radius:14px;
+}
+#preview-console{
+  margin-top:14px;
+  padding:12px;
+  border-radius:10px;
+  background:#f8fafc;
+  border:1px solid #e2e8f0;
+  white-space:pre-wrap;
+  font-family:ui-monospace,SFMono-Regular,Menlo,monospace;
+  font-size:12px;
+}
+</style>
+</head>
+<body>
+<div id="preview-root"></div>
+<div id="preview-console">Console output will appear here.</div>
+
+<script>
+(() => {
+  const originalLog = console.log;
+  const originalWarn = console.warn;
+  const originalError = console.error;
+  const output = document.getElementById("preview-console");
+
+  function write(type, values) {
+    const line =
+      "[" +
+      type.toUpperCase() +
+      "] " +
+      values
+        .map(value => {
+          try {
+            return typeof value === "string"
+              ? value
+              : JSON.stringify(value);
+          } catch {
+            return String(value);
+          }
+        })
+        .join(" ");
+
+    output.textContent += "\\n" + line;
+  }
+
+  console.log = (...values) => {
+    write("log", values);
+    originalLog(...values);
+  };
+
+  console.warn = (...values) => {
+    write("warn", values);
+    originalWarn(...values);
+  };
+
+  console.error = (...values) => {
+    write("error", values);
+    originalError(...values);
+  };
+
+  window.addEventListener(
+    "error",
+    event => {
+      write(
+        "error",
+        [event.message || "Runtime error"]
+      );
+    }
+  );
+
+  try {
+    ${code}
+  } catch (error) {
+    write(
+      "error",
+      [error?.message || String(error)]
+    );
+  }
+})();
+</script>
+</body>
+</html>`;
+    }
+
+    return code;
+  }
+
+  function openCodePreview(code, language) {
+    let overlay =
+      document.getElementById(
+        "code-preview-overlay"
+      );
+
+    if (!overlay) {
+      overlay =
+        document.createElement("div");
+
+      overlay.id =
+        "code-preview-overlay";
+
+      overlay.className =
+        "code-preview-overlay";
+
+      overlay.innerHTML = `
+        <div class="code-preview-backdrop"></div>
+
+        <section
+          class="code-preview-window"
+          role="dialog"
+          aria-modal="true"
+          aria-label="Code preview"
+        >
+          <div class="code-preview-header">
+            <div>
+              <div class="code-preview-eyebrow">
+                LIVE PREVIEW
+              </div>
+
+              <div class="code-preview-title">
+                Code in action
+              </div>
+            </div>
+
+            <button
+              type="button"
+              class="code-preview-close"
+              aria-label="Close preview"
+            >
+              ×
+            </button>
+          </div>
+
+          <div class="code-preview-frame-wrap">
+            <iframe
+              class="code-preview-frame"
+              sandbox="allow-scripts"
+              title="Code preview"
+            ></iframe>
+          </div>
+        </section>
+      `;
+
+      document.body.appendChild(
+        overlay
+      );
+
+      const close = () => {
+        overlay.classList.remove("open");
+
+        const frame =
+          overlay.querySelector(
+            ".code-preview-frame"
+          );
+
+        if (frame) {
+          frame.srcdoc =
+            "<!doctype html><html><body></body></html>";
+        }
+      };
+
+      overlay
+        .querySelector(
+          ".code-preview-backdrop"
+        )
+        .addEventListener(
+          "click",
+          close
+        );
+
+      overlay
+        .querySelector(
+          ".code-preview-close"
+        )
+        .addEventListener(
+          "click",
+          close
+        );
+    }
+
+    const frame =
+      overlay.querySelector(
+        ".code-preview-frame"
+      );
+
+    if (!frame) {
+      return;
+    }
+
+    frame.srcdoc =
+      buildPreviewDocument(
+        code,
+        language
+      );
+
+    overlay.classList.add("open");
+  }
+
+  function addPreviewButton(codeBlock) {
+    if (!codeBlock) {
+      return;
+    }
+
+    if (
+      codeBlock.querySelector(
+        ".preview-code-button"
+      )
+    ) {
+      return;
+    }
+
+    const language =
+      getCodeLanguage(codeBlock);
+
+    if (!canPreview(language)) {
+      return;
+    }
+
+    const header =
+      codeBlock.querySelector(
+        ".code-header"
+      );
+
+    if (!header) {
+      return;
+    }
+
+    const button =
+      document.createElement("button");
+
+    button.type =
+      "button";
+
+    button.className =
+      "preview-code-button";
+
+    button.textContent =
+      "Preview";
+
+    button.setAttribute(
+      "aria-label",
+      "Preview code"
+    );
+
+    button.title =
+      "Preview code";
+
+    button.addEventListener(
+      "click",
+      event => {
+        event.preventDefault();
+        event.stopPropagation();
+
+        openCodePreview(
+          getCodeText(codeBlock),
+          getCodeLanguage(codeBlock)
+        );
+      }
+    );
+
+    header.appendChild(button);
+  }
+
+  function scanPreviewButtons(root = document) {
+    root
+      .querySelectorAll(
+        ".code-block"
+      )
+      .forEach(
+        addPreviewButton
+      );
+  }
+
+  document.addEventListener(
+    "click",
+    event => {
+      if (
+        currentMode === "coding"
+      ) {
+        setTimeout(() => {
+          scanPreviewButtons();
+        }, 0);
+      }
+    }
+  );
+
+  const observer =
+    new MutationObserver(
+      mutations => {
+        let shouldScan =
+          false;
+
+        mutations.forEach(
+          mutation => {
+            if (
+              mutation.type === "childList" &&
+              mutation.addedNodes.length
+            ) {
+              shouldScan = true;
+            }
+          }
+        );
+
+        if (shouldScan) {
+          scanPreviewButtons();
+          ensureCodingNewChatButton();
+        }
+      }
+    );
+
+  observer.observe(
+    document.body,
+    {
+      childList: true,
+      subtree: true
+    }
+  );
+
+  function initialize() {
+    ensureCodingNewChatButton();
+    scanPreviewButtons();
+  }
+
+  initialize();
+
+  setInterval(() => {
+    ensureCodingNewChatButton();
+    scanPreviewButtons();
+  }, 1000);
+})();
