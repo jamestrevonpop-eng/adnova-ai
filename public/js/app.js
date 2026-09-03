@@ -305,6 +305,1028 @@ function createModeSelector() {
 
 
 
+
+
+/* =========================================================
+   ISOLATED CODING CONVERSATION
+   ========================================================= */
+
+const CODING_HISTORY_STORAGE_KEY =
+  "adnova_coding_history_v2";
+
+function getCodingWorkspaceElement() {
+  return document.getElementById(
+    "coding-workspace"
+  );
+}
+
+function getCodingComposerElement() {
+  const workspace =
+    getCodingWorkspaceElement();
+
+  if (!workspace) {
+    return null;
+  }
+
+  return workspace.querySelector(
+    "#coding-message-input, #coding-input, .coding-composer textarea, textarea"
+  );
+}
+
+function getCodingFeedElement() {
+  const workspace =
+    getCodingWorkspaceElement();
+
+  if (!workspace) {
+    return null;
+  }
+
+  let feed =
+    workspace.querySelector(
+      "#coding-chat-feed"
+    );
+
+  if (!feed) {
+    feed =
+      document.createElement("div");
+
+    feed.id =
+      "coding-chat-feed";
+
+    feed.className =
+      "coding-chat-feed";
+
+    const output =
+      workspace.querySelector(
+        "#coding-output, .coding-output, .coding-response"
+      );
+
+    if (output) {
+      output.innerHTML = "";
+      output.appendChild(feed);
+    } else {
+      workspace.appendChild(feed);
+    }
+  }
+
+  return feed;
+}
+
+function loadCodingHistoryStore() {
+  try {
+    const raw =
+      localStorage.getItem(
+        CODING_HISTORY_STORAGE_KEY
+      );
+
+    const parsed =
+      raw
+        ? JSON.parse(raw)
+        : [];
+
+    return Array.isArray(parsed)
+      ? parsed
+      : [];
+  } catch {
+    return [];
+  }
+}
+
+function saveCodingHistoryStore(
+  history
+) {
+  try {
+    localStorage.setItem(
+      CODING_HISTORY_STORAGE_KEY,
+      JSON.stringify(
+        history.slice(0, 50)
+      )
+    );
+  } catch (error) {
+    console.warn(
+      "Could not save coding history:",
+      error
+    );
+  }
+}
+
+function createCodingSession() {
+  const id =
+    `coding-${Date.now()}-${Math.random()
+      .toString(36)
+      .slice(2, 9)}`;
+
+  const session = {
+    id,
+    title: "New coding chat",
+    updatedAt: Date.now(),
+    messages: []
+  };
+
+  const history =
+    loadCodingHistoryStore();
+
+  history.unshift(session);
+
+  saveCodingHistoryStore(history);
+
+  activeCodingSessionId =
+    id;
+
+  try {
+    localStorage.setItem(
+      "adnova_coding_active_session_v2",
+      id
+    );
+  } catch {}
+
+  codingConversation = [];
+
+  renderIsolatedCodingFeed();
+
+  return session;
+}
+
+function ensureCodingSession() {
+  if (
+    activeCodingSessionId
+  ) {
+    const history =
+      loadCodingHistoryStore();
+
+    if (
+      history.some(
+        session =>
+          session &&
+          session.id ===
+            activeCodingSessionId
+      )
+    ) {
+      return;
+    }
+  }
+
+  let storedId = null;
+
+  try {
+    storedId =
+      localStorage.getItem(
+        "adnova_coding_active_session_v2"
+      );
+  } catch {}
+
+  const history =
+    loadCodingHistoryStore();
+
+  const existing =
+    history.find(
+      session =>
+        session &&
+        session.id === storedId
+    );
+
+  if (existing) {
+    activeCodingSessionId =
+      existing.id;
+
+    codingConversation =
+      Array.isArray(
+        existing.messages
+      )
+        ? JSON.parse(
+            JSON.stringify(
+              existing.messages
+            )
+          )
+        : [];
+
+    return;
+  }
+
+  const session =
+    history[0];
+
+  if (session) {
+    activeCodingSessionId =
+      session.id;
+
+    codingConversation =
+      Array.isArray(
+        session.messages
+      )
+        ? JSON.parse(
+            JSON.stringify(
+              session.messages
+            )
+          )
+        : [];
+
+    try {
+      localStorage.setItem(
+        "adnova_coding_active_session_v2",
+        session.id
+      );
+    } catch {}
+
+    return;
+  }
+
+  createCodingSession();
+}
+
+function saveCodingConversation() {
+  if (!activeCodingSessionId) {
+    createCodingSession();
+  }
+
+  const history =
+    loadCodingHistoryStore();
+
+  const index =
+    history.findIndex(
+      session =>
+        session &&
+        session.id ===
+          activeCodingSessionId
+    );
+
+  if (index === -1) {
+    const session =
+      createCodingSession();
+
+    session.messages =
+      JSON.parse(
+        JSON.stringify(
+          codingConversation
+        )
+      );
+
+    saveCodingHistoryStore(
+      loadCodingHistoryStore()
+    );
+
+    return;
+  }
+
+  const session =
+    history[index];
+
+  session.messages =
+    JSON.parse(
+      JSON.stringify(
+        codingConversation
+      )
+    );
+
+  session.updatedAt =
+    Date.now();
+
+  const firstUser =
+    codingConversation.find(
+      message =>
+        message &&
+        message.role === "user"
+    );
+
+  if (
+    firstUser &&
+    typeof firstUser.content ===
+      "string"
+  ) {
+    const title =
+      firstUser.content
+        .replace(/\s+/g, " ")
+        .trim();
+
+    if (title) {
+      session.title =
+        title.length > 54
+          ? `${title.slice(0, 54)}…`
+          : title;
+    }
+  }
+
+  saveCodingHistoryStore(
+    history
+  );
+}
+
+function renderIsolatedCodingFeed() {
+  const feed =
+    getCodingFeedElement();
+
+  if (!feed) {
+    return;
+  }
+
+  feed.innerHTML = "";
+
+  codingConversation.forEach(
+    message => {
+      if (
+        !message ||
+        !["user", "assistant"]
+          .includes(
+            message.role
+          )
+      ) {
+        return;
+      }
+
+      const item =
+        document.createElement("div");
+
+      item.className =
+        `coding-chat-message ${message.role}`;
+
+      const bubble =
+        document.createElement("div");
+
+      bubble.className =
+        "coding-chat-bubble";
+
+      let displayText = "";
+
+      if (
+        typeof message.content ===
+        "string"
+      ) {
+        displayText =
+          message.content;
+      } else if (
+        Array.isArray(
+          message.content
+        )
+      ) {
+        displayText =
+          message.content
+            .filter(
+              part =>
+                part &&
+                part.type === "text"
+            )
+            .map(
+              part =>
+                part.text || ""
+            )
+            .join("\n");
+      }
+
+      bubble.innerHTML =
+        formatMessage(
+          displayText
+        );
+
+      item.appendChild(
+        bubble
+      );
+
+      feed.appendChild(
+        item
+      );
+
+      highlightCodeBlocks(
+        bubble
+      );
+
+      renderMath(
+        bubble
+      );
+
+      if (
+        message.role ===
+        "assistant"
+      ) {
+        addCodingResponseActions(
+          item,
+          bubble
+        );
+      }
+    }
+  );
+
+  requestAnimationFrame(
+    () => {
+      feed.scrollTop =
+        feed.scrollHeight;
+    }
+  );
+}
+
+function addCodingResponseActions(
+  messageElement,
+  bubble
+) {
+  if (!messageElement || !bubble) {
+    return;
+  }
+
+  const actions =
+    document.createElement("div");
+
+  actions.className =
+    "coding-response-actions";
+
+  const copy =
+    document.createElement("button");
+
+  copy.type = "button";
+  copy.textContent = "Copy";
+
+  copy.addEventListener(
+    "click",
+    async () => {
+      try {
+        await navigator.clipboard.writeText(
+          bubble.textContent
+        );
+
+        copy.textContent =
+          "Copied!";
+
+        setTimeout(() => {
+          copy.textContent =
+            "Copy";
+        }, 1200);
+      } catch {
+        copy.textContent =
+          "Failed";
+
+        setTimeout(() => {
+          copy.textContent =
+            "Copy";
+        }, 1200);
+      }
+    }
+  );
+
+  actions.appendChild(
+    copy
+  );
+
+  messageElement.appendChild(
+    actions
+  );
+}
+
+async function sendCodingMessage() {
+  if (codingGeneration) {
+    return;
+  }
+
+  ensureCodingSession();
+
+  const input =
+    getCodingComposerElement();
+
+  if (!input) {
+    return;
+  }
+
+  const text =
+    String(
+      input.value || ""
+    ).trim();
+
+  if (!text) {
+    return;
+  }
+
+  /*
+   * Clear immediately.
+   *
+   * This prevents the exact bug where the same coding
+   * request remains in the composer after Enter.
+   */
+  input.value = "";
+
+  input.dispatchEvent(
+    new Event("input", {
+      bubbles: true
+    })
+  );
+
+  try {
+    localStorage.removeItem(
+      "adnova_coding_draft_v1"
+    );
+  } catch {}
+
+  codingConversation.push({
+    role: "user",
+    content: text,
+    mode: "coding"
+  });
+
+  saveCodingConversation();
+
+  renderIsolatedCodingFeed();
+
+  const feed =
+    getCodingFeedElement();
+
+  if (!feed) {
+    return;
+  }
+
+  const assistantItem =
+    document.createElement("div");
+
+  assistantItem.className =
+    "coding-chat-message assistant";
+
+  const assistantBubble =
+    document.createElement("div");
+
+  assistantBubble.className =
+    "coding-chat-bubble";
+
+  assistantBubble.innerHTML = `
+    <div class="coding-thinking">
+      <span></span>
+      <span></span>
+      <span></span>
+      <div>Working on it…</div>
+    </div>
+  `;
+
+  assistantItem.appendChild(
+    assistantBubble
+  );
+
+  feed.appendChild(
+    assistantItem
+  );
+
+  codingGeneration =
+    true;
+
+  try {
+    const reply =
+      await streamMessage(
+        assistantBubble,
+        codingConversation
+      );
+
+    if (reply) {
+      codingConversation.push({
+        role: "assistant",
+        content: reply
+      });
+
+      saveCodingConversation();
+
+      addCodingResponseActions(
+        assistantItem,
+        assistantBubble
+      );
+    }
+  } catch (error) {
+    if (
+      error.name ===
+      "AbortError"
+    ) {
+      return;
+    }
+
+    assistantBubble.innerHTML =
+      formatMessage(
+        `Sorry — ${
+          error.message ||
+          "something went wrong."
+        }`
+      );
+  } finally {
+    codingGeneration =
+      false;
+
+    input.value = "";
+
+    input.dispatchEvent(
+      new Event("input", {
+        bubbles: true
+      })
+    );
+
+    input.focus();
+
+    requestAnimationFrame(
+      () => {
+        feed.scrollTop =
+          feed.scrollHeight;
+      }
+    );
+  }
+}
+
+/*
+ * ---------------------------------------------------------
+ * FORCE CODING COMPOSER TO USE CODING SEND
+ * ---------------------------------------------------------
+ */
+
+document.addEventListener(
+  "keydown",
+  event => {
+    const target =
+      event.target;
+
+    if (
+      !(target instanceof HTMLTextAreaElement)
+    ) {
+      return;
+    }
+
+    if (
+      !target.closest(
+        "#coding-workspace"
+      )
+    ) {
+      return;
+    }
+
+    if (
+      event.key !== "Enter" ||
+      event.shiftKey ||
+      event.ctrlKey ||
+      event.metaKey ||
+      event.altKey
+    ) {
+      return;
+    }
+
+    event.preventDefault();
+    event.stopPropagation();
+    event.stopImmediatePropagation();
+
+    sendCodingMessage();
+  },
+  true
+);
+
+/*
+ * ---------------------------------------------------------
+ * BLOCK CODING FROM THE NORMAL CHAT
+ * ---------------------------------------------------------
+ */
+
+const originalSendMessage =
+  sendMessage;
+
+if (
+  !window.__adnovaCodingSendWrapped
+) {
+  window.__adnovaCodingSendWrapped =
+    true;
+
+  sendMessage =
+    async function () {
+      /*
+       * The normal composer cannot create normal-chat
+       * messages while Coding mode is active.
+       */
+      if (
+        currentMode === "coding"
+      ) {
+        return sendCodingMessage();
+      }
+
+      return originalSendMessage();
+    };
+}
+
+/*
+ * ---------------------------------------------------------
+ * REMOVE DUPLICATE CODING NEW CHAT BUTTONS
+ * ---------------------------------------------------------
+ *
+ * We keep the rightmost New Chat button and remove every
+ * duplicate generated by earlier batches.
+ */
+
+function cleanupCodingNewChatButtons() {
+  const workspace =
+    getCodingWorkspaceElement();
+
+  if (!workspace) {
+    return;
+  }
+
+  const candidates =
+    Array.from(
+      workspace.querySelectorAll(
+        "button"
+      )
+    ).filter(
+      button =>
+        String(
+          button.textContent || ""
+        )
+          .trim()
+          .toLowerCase() ===
+        "new chat"
+    );
+
+  if (
+    candidates.length <= 1
+  ) {
+    return;
+  }
+
+  candidates.sort(
+    (a, b) =>
+      b.getBoundingClientRect().right -
+      a.getBoundingClientRect().right
+  );
+
+  const keep =
+    candidates[0];
+
+  candidates
+    .slice(1)
+    .forEach(
+      button => {
+        if (
+          button !== keep
+        ) {
+          button.remove();
+        }
+      }
+    );
+
+  keep.id =
+    "coding-new-chat-single";
+
+  keep.classList.add(
+    "coding-new-chat-single"
+  );
+
+  /*
+   * Make sure the surviving right-side button really
+   * starts a coding-only conversation.
+   */
+
+  keep.onclick =
+    event => {
+      event.preventDefault();
+      event.stopPropagation();
+
+      if (
+        codingGeneration
+      ) {
+        return;
+      }
+
+      createCodingSession();
+
+      const input =
+        getCodingComposerElement();
+
+      if (input) {
+        input.value = "";
+
+        input.dispatchEvent(
+          new Event("input", {
+            bubbles: true
+          })
+        );
+
+        input.focus();
+      }
+    };
+}
+
+/*
+ * ---------------------------------------------------------
+ * SAVE / DOWNLOAD CODE
+ * ---------------------------------------------------------
+ */
+
+function addSaveCodeButton(
+  codeBlock
+) {
+  if (!codeBlock) {
+    return;
+  }
+
+  const header =
+    codeBlock.querySelector(
+      ".code-header"
+    );
+
+  const code =
+    codeBlock.querySelector(
+      "pre code"
+    );
+
+  if (!header || !code) {
+    return;
+  }
+
+  if (
+    header.querySelector(
+      ".coding-save-code-button"
+    )
+  ) {
+    return;
+  }
+
+  const language =
+    String(
+      codeBlock.querySelector(
+        ".code-language"
+      )?.textContent ||
+      "code"
+    )
+      .trim()
+      .toLowerCase();
+
+  const saveButton =
+    document.createElement(
+      "button"
+    );
+
+  saveButton.type =
+    "button";
+
+  saveButton.className =
+    "coding-save-code-button";
+
+  saveButton.textContent =
+    "Save";
+
+  saveButton.title =
+    "Save code to your coding session";
+
+  saveButton.addEventListener(
+    "click",
+    () => {
+      const codeText =
+        code.textContent || "";
+
+      ensureCodingSession();
+
+      codingConversation.push({
+        role: "user",
+        content:
+          `Saved ${language || "code"} snippet:\n\n` +
+          "```" +
+          language +
+          "\n" +
+          codeText +
+          "\n```",
+        mode: "coding"
+      });
+
+      saveCodingConversation();
+
+      saveButton.textContent =
+        "Saved";
+
+      setTimeout(() => {
+        saveButton.textContent =
+          "Save";
+      }, 1200);
+    }
+  );
+
+  header.appendChild(
+    saveButton
+  );
+
+  const downloadButton =
+    document.createElement(
+      "button"
+    );
+
+  downloadButton.type =
+    "button";
+
+  downloadButton.className =
+    "coding-download-code-button";
+
+  downloadButton.textContent =
+    "Download";
+
+  downloadButton.title =
+    "Download this code";
+
+  downloadButton.addEventListener(
+    "click",
+    () => {
+      const extensionMap = {
+        javascript: "js",
+        js: "js",
+        html: "html",
+        htm: "html",
+        css: "css",
+        svg: "svg",
+        json: "json",
+        python: "py",
+        py: "py",
+        bash: "sh",
+        sh: "sh",
+        typescript: "ts",
+        ts: "ts"
+      };
+
+      const extension =
+        extensionMap[
+          language
+        ] || "txt";
+
+      const blob =
+        new Blob(
+          [code.textContent || ""],
+          {
+            type: "text/plain;charset=utf-8"
+          }
+        );
+
+      const url =
+        URL.createObjectURL(
+          blob
+        );
+
+      const anchor =
+        document.createElement(
+          "a"
+        );
+
+      anchor.href =
+        url;
+
+      anchor.download =
+        `adnova-code.${extension}`;
+
+      document.body.appendChild(
+        anchor
+      );
+
+      anchor.click();
+
+      anchor.remove();
+
+      setTimeout(() => {
+        URL.revokeObjectURL(
+          url
+        );
+      }, 1000);
+    }
+  );
+
+  header.appendChild(
+    downloadButton
+  );
+}
+
+/*
+ * ---------------------------------------------------------
+ * WORKSPACE OBSERVER
+ * ---------------------------------------------------------
+ */
+
+if (
+  !window.__adnovaCodingIsolationObserver
+) {
+  window.__adnovaCodingIsolationObserver =
+    true;
+
+  const observer =
+    new MutationObserver(
+      () => {
+        if (
+          currentMode !==
+          "coding"
+        ) {
+          return;
+        }
+
+        ensureCodingSession();
+        cleanupCodingNewChatButtons();
+
+        document
+          .querySelectorAll(
+            "#coding-workspace .code-block"
+          )
+          .forEach(
+            addSaveCodeButton
+          );
+      }
+    );
+
+  observer.observe(
+    document.body,
+    {
+      childList: true,
+      subtree: true
+    }
+  );
+}
+
+ensureCodingSession();
+
+
 /* =========================================================
    CODING WORKSPACE
    ========================================================= */
@@ -1378,6 +2400,21 @@ loadChatHistory();
 let currentController = null;
 let isGenerating = false;
 let generationStopped = false;
+
+/*
+|--------------------------------------------------------------------------
+| ISOLATED CODING CONVERSATION
+|--------------------------------------------------------------------------
+|
+| Coding has its own conversation state.
+| It never writes into the normal chat conversation.
+|
+*/
+
+let codingConversation = [];
+let activeCodingSessionId = null;
+let codingGeneration = false;
+
 
 
 /*
@@ -3881,7 +4918,8 @@ function setGenerating(generating) {
 */
 
 async function streamMessage(
-  assistantBubble
+  assistantBubble,
+  messageList = conversation
 ) {
   currentController =
     new AbortController();
@@ -3896,7 +4934,7 @@ async function streamMessage(
             "application/json"
         },
         body: JSON.stringify({
-          messages: conversation
+          messages: messageList
         }),
         signal:
           currentController.signal
