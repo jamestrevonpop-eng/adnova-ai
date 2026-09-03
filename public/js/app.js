@@ -71,6 +71,7 @@ function setCurrentMode(mode) {
   updateModeButton();
   updateModeOptions();
   updateModeComposerState();
+  updateCodingWorkspaceState();
 }
 
 function updateModeButton() {
@@ -300,6 +301,679 @@ function createModeSelector() {
   setCurrentMode("off");
 }
 
+
+
+
+
+/* =========================================================
+   CODING WORKSPACE
+   ========================================================= */
+
+const CODING_HISTORY_KEY =
+  "adnova_coding_history_v1";
+
+let codingHistory = [];
+
+let codingWorkspaceBuilt = false;
+
+let codingWorkspaceElements = {
+  root: null,
+  input: null,
+  activity: null,
+  output: null,
+  history: null,
+  status: null
+};
+
+function loadCodingHistory() {
+  try {
+    const stored =
+      localStorage.getItem(
+        CODING_HISTORY_KEY
+      );
+
+    const parsed =
+      stored
+        ? JSON.parse(stored)
+        : [];
+
+    codingHistory =
+      Array.isArray(parsed)
+        ? parsed
+        : [];
+  } catch {
+    codingHistory = [];
+  }
+}
+
+function saveCodingHistory() {
+  try {
+    localStorage.setItem(
+      CODING_HISTORY_KEY,
+      JSON.stringify(
+        codingHistory.slice(0, 50)
+      )
+    );
+  } catch (error) {
+    console.error(
+      "Could not save coding history:",
+      error
+    );
+  }
+}
+
+function addCodingHistory(
+  prompt,
+  response
+) {
+  const cleanPrompt =
+    String(prompt || "")
+      .trim();
+
+  const cleanResponse =
+    String(response || "")
+      .trim();
+
+  if (!cleanPrompt) {
+    return;
+  }
+
+  codingHistory.unshift({
+    id:
+      `${Date.now()}-${Math.random()
+        .toString(36)
+        .slice(2, 8)}`,
+    title:
+      cleanPrompt.length > 48
+        ? `${cleanPrompt.slice(0, 48)}…`
+        : cleanPrompt,
+    prompt:
+      cleanPrompt,
+    response:
+      cleanResponse,
+    createdAt:
+      Date.now()
+  });
+
+  codingHistory =
+    codingHistory.slice(
+      0,
+      50
+    );
+
+  saveCodingHistory();
+
+  renderCodingHistory();
+}
+
+function getLatestCodingResponse() {
+  for (
+    let i =
+      conversation.length - 1;
+    i >= 0;
+    i--
+  ) {
+    const message =
+      conversation[i];
+
+    if (
+      message &&
+      message.role === "assistant" &&
+      typeof message.content === "string"
+    ) {
+      return message.content;
+    }
+  }
+
+  return "";
+}
+
+function escapeCodingHtml(value) {
+  return String(value || "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#039;");
+}
+
+function setCodingActivity(
+  step,
+  detail,
+  state = "active"
+) {
+  const activity =
+    codingWorkspaceElements.activity;
+
+  if (!activity) {
+    return;
+  }
+
+  const states = [
+    "prepare",
+    "generate",
+    "review",
+    "ready"
+  ];
+
+  states.forEach(name => {
+    const item =
+      activity.querySelector(
+        `[data-coding-step="${name}"]`
+      );
+
+    if (!item) {
+      return;
+    }
+
+    item.classList.remove(
+      "active",
+      "complete"
+    );
+
+    const index =
+      states.indexOf(name);
+
+    const currentIndex =
+      states.indexOf(step);
+
+    if (
+      index <
+      currentIndex
+    ) {
+      item.classList.add(
+        "complete"
+      );
+    }
+
+    if (
+      index ===
+      currentIndex
+    ) {
+      item.classList.add(
+        state === "complete"
+          ? "complete"
+          : "active"
+      );
+    }
+  });
+
+  const status =
+    codingWorkspaceElements.status;
+
+  if (status) {
+    status.textContent =
+      detail;
+  }
+}
+
+function renderCodingOutput(
+  prompt,
+  response
+) {
+  const output =
+    codingWorkspaceElements.output;
+
+  if (!output) {
+    return;
+  }
+
+  if (!prompt) {
+    output.innerHTML = `
+      <div class="coding-empty-state">
+        <div class="coding-empty-icon">
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M8 6l-6 6 6 6"></path>
+            <path d="M16 6l6 6-6 6"></path>
+            <path d="M14 3l-4 18"></path>
+          </svg>
+        </div>
+
+        <h2>Ready to build</h2>
+
+        <p>
+          Describe what you want to build, fix, or understand.
+        </p>
+      </div>
+    `;
+
+    return;
+  }
+
+  output.innerHTML = `
+    <div class="coding-request">
+      <div class="coding-section-label">
+        REQUEST
+      </div>
+
+      <div class="coding-request-text">
+        ${escapeCodingHtml(prompt)}
+      </div>
+    </div>
+
+    <div class="coding-response">
+      <div class="coding-section-label">
+        AI RESPONSE
+      </div>
+
+      <div class="coding-response-body">
+        ${formatMessage(response || "Working...")}
+      </div>
+    </div>
+  `;
+}
+
+function renderCodingHistory() {
+  const history =
+    codingWorkspaceElements.history;
+
+  if (!history) {
+    return;
+  }
+
+  history.innerHTML = "";
+
+  if (!codingHistory.length) {
+    history.innerHTML = `
+      <div class="coding-history-empty">
+        No coding sessions yet.
+      </div>
+    `;
+
+    return;
+  }
+
+  codingHistory.forEach(session => {
+    const button =
+      document.createElement("button");
+
+    button.type = "button";
+    button.className =
+      "coding-history-item";
+
+    button.innerHTML = `
+      <span class="coding-history-item-icon">
+        <svg viewBox="0 0 20 20" aria-hidden="true">
+          <path d="M6 4.5h8"></path>
+          <path d="M6 9h8"></path>
+          <path d="M6 13.5h5"></path>
+        </svg>
+      </span>
+
+      <span class="coding-history-item-text">
+        ${escapeCodingHtml(session.title)}
+      </span>
+    `;
+
+    button.addEventListener(
+      "click",
+      () => {
+        renderCodingOutput(
+          session.prompt,
+          session.response
+        );
+
+        setCodingActivity(
+          "ready",
+          "Session loaded",
+          "complete"
+        );
+      }
+    );
+
+    history.appendChild(
+      button
+    );
+  });
+}
+
+function createCodingWorkspace() {
+  if (
+    codingWorkspaceBuilt ||
+    document.getElementById(
+      "coding-workspace"
+    )
+  ) {
+    codingWorkspaceBuilt = true;
+    return;
+  }
+
+  loadCodingHistory();
+
+  const root =
+    document.createElement("section");
+
+  root.id =
+    "coding-workspace";
+
+  root.className =
+    "coding-workspace";
+
+  root.innerHTML = `
+    <header class="coding-workspace-header">
+
+      <div class="coding-header-left">
+
+        <button
+          type="button"
+          class="coding-back-button"
+          id="coding-back-button"
+        >
+          <svg viewBox="0 0 20 20" aria-hidden="true">
+            <path d="M12.5 4L6.5 10l6 6"></path>
+          </svg>
+
+          <span>Back to chat</span>
+        </button>
+
+        <div class="coding-workspace-title">
+          <div class="coding-workspace-title-icon">
+            <svg viewBox="0 0 20 20" aria-hidden="true">
+              <path d="M7 5L3 10l4 5"></path>
+              <path d="M13 5l4 5-4 5"></path>
+            </svg>
+          </div>
+
+          <div>
+            <strong>Coding</strong>
+            <span>Focused workspace</span>
+          </div>
+        </div>
+
+      </div>
+
+      <div
+        class="coding-workspace-status"
+        id="coding-workspace-status"
+      >
+        Ready
+      </div>
+
+    </header>
+
+    <div class="coding-workspace-body">
+
+      <aside class="coding-history-panel">
+        <div class="coding-panel-heading">
+          <span>CODE SESSIONS</span>
+        </div>
+
+        <div
+          class="coding-history-list"
+          id="coding-history-list"
+        ></div>
+      </aside>
+
+      <main class="coding-main-panel">
+
+        <div class="coding-activity-panel">
+
+          <div class="coding-activity-heading">
+            <span>WORKFLOW</span>
+            <span>AI</span>
+          </div>
+
+          <div
+            class="coding-activity"
+            id="coding-activity"
+          >
+            <div
+              class="coding-step"
+              data-coding-step="prepare"
+            >
+              <span class="coding-step-indicator"></span>
+
+              <div>
+                <strong>Prepare</strong>
+                <span>Understand the request</span>
+              </div>
+            </div>
+
+            <div
+              class="coding-step"
+              data-coding-step="generate"
+            >
+              <span class="coding-step-indicator"></span>
+
+              <div>
+                <strong>Build</strong>
+                <span>Generate the solution</span>
+              </div>
+            </div>
+
+            <div
+              class="coding-step"
+              data-coding-step="review"
+            >
+              <span class="coding-step-indicator"></span>
+
+              <div>
+                <strong>Review</strong>
+                <span>Check the response</span>
+              </div>
+            </div>
+
+            <div
+              class="coding-step"
+              data-coding-step="ready"
+            >
+              <span class="coding-step-indicator"></span>
+
+              <div>
+                <strong>Ready</strong>
+                <span>Solution available</span>
+              </div>
+            </div>
+          </div>
+
+        </div>
+
+        <div
+          class="coding-output"
+          id="coding-output"
+        ></div>
+
+        <form
+          class="coding-composer"
+          id="coding-composer"
+        >
+          <textarea
+            id="coding-input"
+            placeholder="Describe the code you want to build or fix..."
+            rows="2"
+            autocomplete="off"
+            spellcheck="false"
+          ></textarea>
+
+          <button
+            type="submit"
+            class="coding-send-button"
+            aria-label="Run coding request"
+          >
+            <svg viewBox="0 0 20 20" aria-hidden="true">
+              <path d="M4 10h11"></path>
+              <path d="M10.5 5.5L15 10l-4.5 4.5"></path>
+            </svg>
+          </button>
+        </form>
+
+      </main>
+
+    </div>
+  `;
+
+  document.body.appendChild(
+    root
+  );
+
+  codingWorkspaceElements = {
+    root,
+    input:
+      document.getElementById(
+        "coding-input"
+      ),
+    activity:
+      document.getElementById(
+        "coding-activity"
+      ),
+    output:
+      document.getElementById(
+        "coding-output"
+      ),
+    history:
+      document.getElementById(
+        "coding-history-list"
+      ),
+    status:
+      document.getElementById(
+        "coding-workspace-status"
+      )
+  };
+
+  document
+    .getElementById(
+      "coding-back-button"
+    )
+    ?.addEventListener(
+      "click",
+      () => {
+        setCurrentMode("off");
+      }
+    );
+
+  document
+    .getElementById(
+      "coding-composer"
+    )
+    ?.addEventListener(
+      "submit",
+      async event => {
+        event.preventDefault();
+
+        const field =
+          codingWorkspaceElements.input;
+
+        const prompt =
+          String(field?.value || "")
+            .trim();
+
+        if (
+          !prompt ||
+          isGenerating
+        ) {
+          return;
+        }
+
+        field.value = "";
+
+        setCodingActivity(
+          "prepare",
+          "Preparing request"
+        );
+
+        renderCodingOutput(
+          prompt,
+          "Generating..."
+        );
+
+        await new Promise(
+          resolve =>
+            setTimeout(
+              resolve,
+              180
+            )
+        );
+
+        setCodingActivity(
+          "generate",
+          "Building response"
+        );
+
+        input.value =
+          prompt;
+
+        resizeInput();
+
+        await sendMessage();
+
+        const response =
+          getLatestCodingResponse();
+
+        setCodingActivity(
+          "review",
+          "Reviewing response"
+        );
+
+        renderCodingOutput(
+          prompt,
+          response
+        );
+
+        await new Promise(
+          resolve =>
+            setTimeout(
+              resolve,
+              220
+            )
+        );
+
+        setCodingActivity(
+          "ready",
+          "Ready"
+        );
+
+        if (response) {
+          addCodingHistory(
+            prompt,
+            response
+          );
+        }
+
+        renderCodingHistory();
+
+        field.focus();
+      }
+    );
+
+  codingWorkspaceBuilt = true;
+
+  renderCodingHistory();
+  renderCodingOutput("", "");
+}
+
+function updateCodingWorkspaceState() {
+  createCodingWorkspace();
+
+  const root =
+    codingWorkspaceElements.root;
+
+  if (!root) {
+    return;
+  }
+
+  const coding =
+    currentMode === "coding";
+
+  root.classList.toggle(
+    "active",
+    coding
+  );
+
+  document.body.classList.toggle(
+    "coding-workspace-active",
+    coding
+  );
+
+  if (coding) {
+    requestAnimationFrame(
+      () => {
+        codingWorkspaceElements.input?.focus();
+      }
+    );
+  }
+}
+
+loadCodingHistory();
 
 
 /* =========================================================
@@ -3543,11 +4217,7 @@ async function sendMessage() {
   conversation.push({
     role: "user",
     content: userContent,
-    mode: currentMode,
-    mode:
-      studyMode
-        ? "study"
-        : "normal"
+    mode: currentMode
   });
 
   saveCurrentChat();
@@ -3946,3 +4616,415 @@ window.addEventListener(
     );
   }
 );
+
+/* =========================================================
+   INITIAL UI BOOT
+   ========================================================= */
+
+createModeSelector();
+createCodingWorkspace();
+updateCodingWorkspaceState();
+
+
+/* =========================================================
+   CODING WORKSPACE ENHANCEMENTS
+   ========================================================= */
+
+const CODING_DRAFT_KEY = "adnova_coding_draft_v1";
+
+let codingEnhancementsReady = false;
+let codingActivityTimer = null;
+let codingReviewTimer = null;
+let codingWasGenerating = false;
+
+function getCodingInput() {
+  return (
+    document.querySelector("#coding-message-input") ||
+    document.querySelector("#coding-input") ||
+    document.querySelector(".coding-composer textarea") ||
+    document.querySelector("#coding-workspace textarea")
+  );
+}
+
+function getCodingSendButton() {
+  return (
+    document.querySelector("#coding-send-button") ||
+    document.querySelector("[data-coding-send]") ||
+    document.querySelector(".coding-send-button") ||
+    document.querySelector(".coding-composer button[type='submit']") ||
+    document.querySelector(".coding-composer button[aria-label*='Send' i]")
+  );
+}
+
+function isCodingInput(element) {
+  if (!element) {
+    return false;
+  }
+
+  return (
+    element === getCodingInput() ||
+    element.matches(
+      "#coding-message-input, #coding-input, .coding-composer textarea, #coding-workspace textarea"
+    )
+  );
+}
+
+function submitCodingInput() {
+  const codingInput = getCodingInput();
+
+  if (!codingInput) {
+    return;
+  }
+
+  const value = String(codingInput.value || "").trim();
+
+  if (!value && !codingInput.closest("form")) {
+    return;
+  }
+
+  const form = codingInput.closest("form");
+
+  if (form) {
+    form.requestSubmit();
+    return;
+  }
+
+  const send = getCodingSendButton();
+
+  if (send && !send.disabled) {
+    send.click();
+  }
+}
+
+function saveCodingDraft() {
+  const codingInput = getCodingInput();
+
+  if (!codingInput) {
+    return;
+  }
+
+  try {
+    localStorage.setItem(
+      CODING_DRAFT_KEY,
+      String(codingInput.value || "")
+    );
+  } catch (error) {
+    console.warn("Could not save coding draft:", error);
+  }
+}
+
+function restoreCodingDraft() {
+  const codingInput = getCodingInput();
+
+  if (!codingInput || codingInput.value.trim()) {
+    return;
+  }
+
+  try {
+    const draft =
+      localStorage.getItem(CODING_DRAFT_KEY) || "";
+
+    if (draft) {
+      codingInput.value = draft;
+      codingInput.dispatchEvent(
+        new Event("input", { bubbles: true })
+      );
+    }
+  } catch (error) {
+    console.warn("Could not restore coding draft:", error);
+  }
+}
+
+function clearCodingDraft() {
+  try {
+    localStorage.removeItem(CODING_DRAFT_KEY);
+  } catch (error) {
+    console.warn("Could not clear coding draft:", error);
+  }
+}
+
+function ensureCodingActivityPanel() {
+  const workspace =
+    document.getElementById("coding-workspace");
+
+  if (!workspace) {
+    return null;
+  }
+
+  let panel =
+    workspace.querySelector(".coding-activity-panel");
+
+  if (panel) {
+    return panel;
+  }
+
+  panel =
+    document.createElement("section");
+
+  panel.className =
+    "coding-activity-panel";
+
+  panel.innerHTML = `
+    <div class="coding-activity-header">
+      <div>
+        <div class="coding-activity-eyebrow">
+          WORKFLOW
+        </div>
+        <div class="coding-activity-title">
+          Coding activity
+        </div>
+      </div>
+
+      <div class="coding-activity-live">
+        <span class="coding-activity-live-dot"></span>
+        LIVE
+      </div>
+    </div>
+
+    <div class="coding-activity-steps">
+      <div class="coding-activity-step" data-stage="prepare">
+        <span class="coding-activity-step-icon">1</span>
+        <div>
+          <strong>Preparing</strong>
+          <span>Reading the request and context</span>
+        </div>
+      </div>
+
+      <div class="coding-activity-step" data-stage="build">
+        <span class="coding-activity-step-icon">2</span>
+        <div>
+          <strong>Building</strong>
+          <span>Working through the coding task</span>
+        </div>
+      </div>
+
+      <div class="coding-activity-step" data-stage="review">
+        <span class="coding-activity-step-icon">3</span>
+        <div>
+          <strong>Reviewing</strong>
+          <span>Checking the generated result</span>
+        </div>
+      </div>
+
+      <div class="coding-activity-step" data-stage="ready">
+        <span class="coding-activity-step-icon">✓</span>
+        <div>
+          <strong>Ready</strong>
+          <span>Response completed</span>
+        </div>
+      </div>
+    </div>
+  `;
+
+  workspace.appendChild(panel);
+
+  return panel;
+}
+
+function setCodingActivityStage(stage) {
+  const panel =
+    ensureCodingActivityPanel();
+
+  if (!panel) {
+    return;
+  }
+
+  panel.dataset.stage = stage;
+
+  const order = [
+    "prepare",
+    "build",
+    "review",
+    "ready"
+  ];
+
+  const activeIndex =
+    order.indexOf(stage);
+
+  panel
+    .querySelectorAll(".coding-activity-step")
+    .forEach(step => {
+      const stepStage =
+        step.dataset.stage;
+
+      const stepIndex =
+        order.indexOf(stepStage);
+
+      step.classList.toggle(
+        "active",
+        stepIndex === activeIndex
+      );
+
+      step.classList.toggle(
+        "complete",
+        stepIndex < activeIndex ||
+        stage === "ready" &&
+        stepStage === "ready"
+      );
+    });
+}
+
+function startCodingActivityLoop() {
+  if (codingActivityTimer) {
+    return;
+  }
+
+  codingActivityTimer =
+    setInterval(() => {
+      const codingIsActive =
+        currentMode === "coding";
+
+      if (!codingIsActive) {
+        codingWasGenerating = false;
+
+        clearTimeout(codingReviewTimer);
+        codingReviewTimer = null;
+
+        return;
+      }
+
+      if (isGenerating && !codingWasGenerating) {
+        codingWasGenerating = true;
+
+        setCodingActivityStage("build");
+
+        clearTimeout(codingReviewTimer);
+
+        codingReviewTimer =
+          setTimeout(() => {
+            if (
+              currentMode === "coding" &&
+              isGenerating
+            ) {
+              setCodingActivityStage("review");
+            }
+          }, 1400);
+      }
+
+      if (!isGenerating && codingWasGenerating) {
+        codingWasGenerating = false;
+
+        clearTimeout(codingReviewTimer);
+        codingReviewTimer = null;
+
+        setCodingActivityStage("ready");
+
+        clearCodingDraft();
+      }
+
+      if (
+        codingIsActive &&
+        !isGenerating &&
+        !codingWasGenerating
+      ) {
+        setCodingActivityStage("ready");
+      }
+    }, 220);
+}
+
+function installCodingWorkspaceKeyboard() {
+  document.addEventListener(
+    "keydown",
+    event => {
+      const active =
+        document.activeElement;
+
+      if (
+        isCodingInput(active) &&
+        currentMode === "coding"
+      ) {
+        if (
+          event.key === "Enter" &&
+          !event.shiftKey &&
+          !event.ctrlKey &&
+          !event.metaKey
+        ) {
+          event.preventDefault();
+          event.stopPropagation();
+
+          submitCodingInput();
+
+          return;
+        }
+      }
+
+      if (
+        event.key === "Escape" &&
+        currentMode === "coding" &&
+        isGenerating
+      ) {
+        event.preventDefault();
+        stopGeneration();
+      }
+    },
+    true
+  );
+}
+
+function installCodingDraftSaving() {
+  document.addEventListener(
+    "input",
+    event => {
+      if (
+        currentMode !== "coding" ||
+        !isCodingInput(event.target)
+      ) {
+        return;
+      }
+
+      saveCodingDraft();
+    }
+  );
+
+  document.addEventListener(
+    "click",
+    () => {
+      if (currentMode === "coding") {
+        setTimeout(() => {
+          restoreCodingDraft();
+        }, 80);
+      }
+    }
+  );
+}
+
+function watchCodingWorkspace() {
+  if (codingEnhancementsReady) {
+    return;
+  }
+
+  codingEnhancementsReady = true;
+
+  installCodingWorkspaceKeyboard();
+  installCodingDraftSaving();
+  startCodingActivityLoop();
+
+  const observer =
+    new MutationObserver(() => {
+      if (currentMode === "coding") {
+        ensureCodingActivityPanel();
+
+        setTimeout(() => {
+          restoreCodingDraft();
+        }, 50);
+      }
+    });
+
+  observer.observe(
+    document.body,
+    {
+      childList: true,
+      subtree: true
+    }
+  );
+
+  if (currentMode === "coding") {
+    ensureCodingActivityPanel();
+    restoreCodingDraft();
+    setCodingActivityStage(
+      isGenerating ? "build" : "ready"
+    );
+  }
+}
+
+watchCodingWorkspace();
