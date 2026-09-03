@@ -8,6 +8,389 @@ let conversation = [];
 
 let studyMode = false;
 
+/* =========================================================
+   CHAT HISTORY
+   ========================================================= */
+
+const CHAT_HISTORY_KEY = "adnova_chat_history_v1";
+
+let chatHistory = [];
+let currentChatId = null;
+
+function createChatId() {
+  return `${Date.now()}-${Math.random()
+    .toString(36)
+    .slice(2, 10)}`;
+}
+
+function loadChatHistory() {
+  try {
+    const stored =
+      localStorage.getItem(
+        CHAT_HISTORY_KEY
+      );
+
+    const parsed =
+      stored
+        ? JSON.parse(stored)
+        : [];
+
+    chatHistory =
+      Array.isArray(parsed)
+        ? parsed
+        : [];
+  } catch {
+    chatHistory = [];
+  }
+}
+
+function saveChatHistory() {
+  try {
+    localStorage.setItem(
+      CHAT_HISTORY_KEY,
+      JSON.stringify(
+        chatHistory.slice(0, 50)
+      )
+    );
+  } catch (error) {
+    console.error(
+      "Could not save chat history:",
+      error
+    );
+  }
+}
+
+function getConversationTitle() {
+  const firstUser =
+    conversation.find(
+      message =>
+        message &&
+        message.role === "user"
+    );
+
+  if (!firstUser) {
+    return "New chat";
+  }
+
+  let text = "";
+
+  if (
+    typeof firstUser.content ===
+    "string"
+  ) {
+    text = firstUser.content;
+  } else if (
+    Array.isArray(
+      firstUser.content
+    )
+  ) {
+    text =
+      firstUser.content
+        .filter(
+          part =>
+            part &&
+            part.type ===
+              "text"
+        )
+        .map(
+          part =>
+            part.text || ""
+        )
+        .join(" ");
+  }
+
+  text =
+    text
+      .replace(
+        /\s+/g,
+        " "
+      )
+      .trim();
+
+  if (!text) {
+    return "New chat";
+  }
+
+  return text.length > 42
+    ? `${text.slice(0, 42)}…`
+    : text;
+}
+
+function saveCurrentChat() {
+  if (
+    !conversation.length
+  ) {
+    return;
+  }
+
+  if (!currentChatId) {
+    currentChatId =
+      createChatId();
+  }
+
+  const existingIndex =
+    chatHistory.findIndex(
+      chat =>
+        chat.id ===
+        currentChatId
+    );
+
+  const chat = {
+    id: currentChatId,
+    title:
+      getConversationTitle(),
+    updatedAt: Date.now(),
+    messages:
+      conversation
+  };
+
+  if (
+    existingIndex === -1
+  ) {
+    chatHistory.unshift(
+      chat
+    );
+  } else {
+    chatHistory[
+      existingIndex
+    ] = chat;
+
+    chatHistory.sort(
+      (a, b) =>
+        b.updatedAt -
+        a.updatedAt
+    );
+  }
+
+  saveChatHistory();
+  renderChatHistory();
+}
+
+function renderChatHistory() {
+  const list =
+    document.getElementById(
+      "chat-history-list"
+    );
+
+  if (!list) {
+    return;
+  }
+
+  list.innerHTML = "";
+
+  if (!chatHistory.length) {
+    const empty =
+      document.createElement(
+        "div"
+      );
+
+    empty.className =
+      "chat-history-empty";
+
+    empty.textContent =
+      "No saved chats yet.";
+
+    list.appendChild(
+      empty
+    );
+
+    return;
+  }
+
+  chatHistory
+    .forEach(chat => {
+      const button =
+        document.createElement(
+          "button"
+        );
+
+      button.type = "button";
+
+      button.className =
+        "chat-history-item";
+
+      if (
+        chat.id ===
+        currentChatId
+      ) {
+        button.classList.add(
+          "active"
+        );
+      }
+
+      button.dataset.chatId =
+        chat.id;
+
+      button.textContent =
+        chat.title ||
+        "New chat";
+
+      button.addEventListener(
+        "click",
+        () => {
+          openChat(
+            chat.id
+          );
+        }
+      );
+
+      list.appendChild(
+        button
+      );
+    });
+}
+
+function openChat(chatId) {
+  const chat =
+    chatHistory.find(
+      item =>
+        item.id ===
+        chatId
+    );
+
+  if (!chat) {
+    return;
+  }
+
+  if (isGenerating) {
+    stopGeneration();
+  }
+
+  currentChatId =
+    chat.id;
+
+  conversation =
+    Array.isArray(
+      chat.messages
+    )
+      ? JSON.parse(
+          JSON.stringify(
+            chat.messages
+          )
+        )
+      : [];
+
+  messages.innerHTML =
+    "";
+
+  welcome.classList.add(
+    "hidden"
+  );
+
+  conversation.forEach(
+    (message, index) => {
+      if (
+        !message ||
+        !["user", "assistant"]
+          .includes(
+            message.role
+          )
+      ) {
+        return;
+      }
+
+      let displayText = "";
+
+      if (
+        typeof message.content ===
+        "string"
+      ) {
+        displayText =
+          message.content;
+      } else if (
+        Array.isArray(
+          message.content
+        )
+      ) {
+        displayText =
+          message.content
+            .filter(
+              part =>
+                part &&
+                part.type ===
+                  "text"
+            )
+            .map(
+              part =>
+                part.text || ""
+            )
+            .join("\n")
+            .trim();
+      }
+
+      if (
+        message.role ===
+          "user" &&
+        !displayText
+      ) {
+        displayText =
+          "Attachment";
+      }
+
+      const result =
+        addMessage(
+          displayText,
+          message.role,
+          {
+            conversationIndex:
+              index
+          }
+        );
+
+      if (
+        message.role ===
+        "assistant"
+      ) {
+        addMessageActions(
+          result.message,
+          result.bubble,
+          index
+        );
+      }
+    }
+  );
+
+  renderChatHistory();
+
+  requestAnimationFrame(
+    () => {
+      messages.scrollTop =
+        messages.scrollHeight;
+    }
+  );
+}
+
+function startNewChat() {
+  if (isGenerating) {
+    stopGeneration();
+  }
+
+  saveCurrentChat();
+
+  conversation = [];
+
+  currentChatId = null;
+
+  messages.innerHTML =
+    "";
+
+  welcome.classList.remove(
+    "hidden"
+  );
+
+  clearAttachments();
+
+  input.value = "";
+
+  resizeInput();
+
+  renderChatHistory();
+
+  input.focus();
+}
+
+loadChatHistory();
+
 let currentController = null;
 let isGenerating = false;
 let generationStopped = false;
@@ -865,6 +1248,52 @@ function addWebAttachment(url) {
   });
 
   renderAttachments();
+}
+
+function detectAndAttachUrls(text) {
+  const value =
+    String(text || "");
+
+  const matches =
+    value.match(
+      /https?:\/\/[^\s<>"']+/gi
+    );
+
+  if (!matches) {
+    return;
+  }
+
+  matches.forEach(
+    url => {
+      const cleanUrl =
+        url.replace(
+          /[.,!?;:)]$/,
+          ""
+        );
+
+      if (
+        !cleanUrl
+      ) {
+        return;
+      }
+
+      const exists =
+        attachments.some(
+          attachment =>
+            attachment &&
+            attachment.kind ===
+              "web" &&
+            attachment.url ===
+              cleanUrl
+        );
+
+      if (!exists) {
+        addWebAttachment(
+          cleanUrl
+        );
+      }
+    }
+  );
 }
 
 function createAttachmentSystem() {
@@ -2763,6 +3192,10 @@ async function sendMessage() {
   const text =
     input.value.trim();
 
+  detectAndAttachUrls(
+    text
+  );
+
   if (
     !text &&
     !attachments.length
@@ -2805,6 +3238,8 @@ async function sendMessage() {
         ? "study"
         : "normal"
   });
+
+  saveCurrentChat();
 
   const attachmentKinds =
     attachments.map(
@@ -2897,6 +3332,8 @@ async function sendMessage() {
         content: reply
       });
 
+      saveCurrentChat();
+
       const assistantIndex =
         conversation.length - 1;
 
@@ -2919,6 +3356,8 @@ async function sendMessage() {
           role: "assistant",
           content: reply
         });
+
+        saveCurrentChat();
       }
     } else {
       assistantResult.bubble.innerHTML =
@@ -3155,60 +3594,26 @@ function smartScrollDuringGeneration() {
 updateScrollState();
 
 /* =========================================================
-   NEW CHAT
+   CHAT HISTORY / NEW CHAT
    ========================================================= */
 
 const newChatButton =
-  document.getElementById("new-chat-button");
+  document.getElementById(
+    "new-chat-button"
+  );
 
 if (newChatButton) {
   newChatButton.addEventListener(
     "click",
-    () => {
-      if (isGenerating) {
-        stopGeneration();
-      }
-
-      conversation = [];
-
-      const messages =
-        document.getElementById("messages");
-
-      if (messages) {
-        messages.innerHTML = "";
-      }
-
-      const welcome =
-        document.getElementById("welcome-screen");
-
-      if (welcome) {
-        welcome.style.display = "";
-      }
-
-      userHasScrolledUp = false;
-
-      window.scrollTo({
-        top: 0,
-        behavior: "smooth"
-      });
-
-      updateScrollState();
-
-      if (typeof messageInput !== "undefined") {
-        messageInput.value = "";
-        messageInput.focus();
-
-        if (typeof autoResize === "function") {
-          autoResize();
-        }
-      }
-    }
+    startNewChat
   );
 }
 
 /* =========================================================
    MESSAGE TIME HELPERS
    ========================================================= */
+
+
 
 function createMessageTime() {
   const time = document.createElement("div");

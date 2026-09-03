@@ -19,6 +19,49 @@
 
 <body>
 
+<aside
+  id="chat-history-sidebar"
+  class="chat-history-sidebar"
+>
+  <div class="chat-history-header">
+    <div class="chat-history-title">
+      Chats
+    </div>
+
+    <button
+      id="history-close-button"
+      class="history-close-button"
+      type="button"
+      aria-label="Close chat history"
+    >
+      ×
+    </button>
+  </div>
+
+  <div class="chat-history-search">
+    <input
+      id="chat-history-search"
+      type="search"
+      placeholder="Search chats..."
+      autocomplete="off"
+    >
+  </div>
+
+  <div
+    id="chat-history-list"
+    class="chat-history-list"
+  ></div>
+</aside>
+
+<button
+  id="history-toggle-button"
+  class="history-toggle-button"
+  type="button"
+  aria-label="Open chat history"
+>
+  ☰
+</button>
+
 <div
   id="connection-status"
   class="connection-status"
@@ -110,6 +153,109 @@
     />
   </svg>
 </button>
+
+<script>
+document.addEventListener("DOMContentLoaded", () => {
+  const toggle =
+    document.getElementById(
+      "history-toggle-button"
+    );
+
+  const close =
+    document.getElementById(
+      "history-close-button"
+    );
+
+  const sidebar =
+    document.getElementById(
+      "chat-history-sidebar"
+    );
+
+  const search =
+    document.getElementById(
+      "chat-history-search"
+    );
+
+  const list =
+    document.getElementById(
+      "chat-history-list"
+    );
+
+  if (!toggle || !sidebar) {
+    return;
+  }
+
+  toggle.addEventListener(
+    "click",
+    () => {
+      sidebar.classList.add(
+        "open"
+      );
+    }
+  );
+
+  close?.addEventListener(
+    "click",
+    () => {
+      sidebar.classList.remove(
+        "open"
+      );
+    }
+  );
+
+  search?.addEventListener(
+    "input",
+    () => {
+      const query =
+        search.value
+          .trim()
+          .toLowerCase();
+
+      document
+        .querySelectorAll(
+          ".chat-history-item"
+        )
+        .forEach(item => {
+          const visible =
+            !query ||
+            item.textContent
+              .toLowerCase()
+              .includes(query);
+
+          item.style.display =
+            visible
+              ? ""
+              : "none";
+        });
+    }
+  );
+
+  document.addEventListener(
+    "click",
+    event => {
+      const item =
+        event.target.closest(
+          ".chat-history-item"
+        );
+
+      if (item) {
+        sidebar.classList.remove(
+          "open"
+        );
+      }
+    }
+  );
+
+  setTimeout(() => {
+    if (
+      typeof renderChatHistory ===
+      "function"
+    ) {
+      renderChatHistory();
+    }
+  }, 0);
+});
+</script>
 
 <script src="/vendor/katex/katex.min.js"></script>
 <script src="/vendor/markdown-it/markdown-it.umd.min.js"></script>
