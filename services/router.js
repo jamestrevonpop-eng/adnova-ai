@@ -99,35 +99,87 @@ function getUserText(message) {
 
 function getMode(messages) {
   if (!Array.isArray(messages)) {
-    return "normal";
+    return "off";
   }
 
-  const modeMessage = messages.find(
-    message =>
-      message &&
-      message.role === "system" &&
-      typeof message.mode === "string"
-  );
+  const latestUser =
+    [...messages]
+      .reverse()
+      .find(
+        message =>
+          message &&
+          message.role === "user"
+      );
 
-  return modeMessage?.mode === "study"
-    ? "study"
-    : "normal";
+  const mode = latestUser?.mode;
+
+  return [
+    "off",
+    "normal",
+    "study",
+    "coding",
+    "research",
+    "creative",
+    "math",
+    "science"
+  ].includes(mode)
+    ? mode
+    : "off";
 }
 
 function applyMode(messages) {
   const mode = getMode(messages);
 
-  if (mode !== "study") {
+  const instructions = {
+    off: "",
+    normal: "",
+
+    study:
+      "ACTIVE AI MODE: STUDY. Teach step-by-step. Explain the core idea first, break difficult ideas into smaller parts, use examples, and help the user understand rather than only giving the answer.",
+
+    coding:
+      "ACTIVE AI MODE: CODING. Focus on practical implementation, debugging, correctness, architecture, readable code, and concrete solutions.",
+
+    research:
+      "ACTIVE AI MODE: RESEARCH. Prioritize evidence, source quality, careful reasoning, uncertainty, and clearly distinguish verified facts from assumptions.",
+
+    creative:
+      "ACTIVE AI MODE: CREATIVE. Prioritize original ideas, useful variation, strong concepts, and creative problem solving while following the user's exact request.",
+
+    math:
+      "ACTIVE AI MODE: MATH. Solve carefully, check calculations, show important working, and avoid unsupported jumps in reasoning.",
+
+    science:
+      "ACTIVE AI MODE: SCIENCE. Explain accurately using scientific terminology, evidence-based reasoning, and clear cause-and-effect."
+  };
+
+  const instruction = instructions[mode];
+
+  if (!instruction) {
+    return messages;
+  }
+
+  const latestUserIndex =
+    [...messages]
+      .map((message, index) =>
+        message?.role === "user"
+          ? index
+          : -1
+      )
+      .filter(index => index !== -1)
+      .pop();
+
+  if (latestUserIndex === undefined) {
     return messages;
   }
 
   return [
-    ...messages,
+    ...messages.slice(0, latestUserIndex),
     {
       role: "user",
-      content:
-        "STUDY MODE IS ACTIVE. Follow the Study Mode instructions. Teach the student step-by-step instead of only giving the final answer."
-    }
+      content: instruction
+    },
+    ...messages.slice(latestUserIndex)
   ];
 }
 

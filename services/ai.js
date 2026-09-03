@@ -222,10 +222,18 @@ function cleanMessages(messages) {
   const MAX_CONTEXT_MESSAGES = 30;
   const MAX_CONTEXT_CHARACTERS = 100000;
 
-  let context =
-    cleaned.slice(
-      -MAX_CONTEXT_MESSAGES
-    );
+  let context;
+
+  if (cleaned.length <= MAX_CONTEXT_MESSAGES) {
+    context = [...cleaned];
+  } else {
+    context = [
+      cleaned[0],
+      ...cleaned.slice(
+        -(MAX_CONTEXT_MESSAGES - 1)
+      )
+    ];
+  }
 
   let totalCharacters =
     context.reduce(
@@ -243,7 +251,7 @@ function cleanMessages(messages) {
     context.length > 2
   ) {
     const removed =
-      context.shift();
+      context.splice(1, 1)[0];
 
     totalCharacters -=
       getContentSize(
