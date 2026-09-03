@@ -3421,3 +3421,59 @@ body.coding-workspace-active .scroll-bottom-button {
     padding: 0;
   }
 }
+
+/* =========================================================
+   CODING FIX + NEXT BATCH
+   ========================================================= */
+
+/* =========================================================
+   CODING FIX + NEXT BATCH
+   ========================================================= */
+
+.open-coding-workspace-button {
+  margin-left: 7px;
+  padding: 5px 9px;
+  border: 1px solid #e2e8f0;
+  border-radius: 7px;
+  background: #ffffff;
+  color: #334155;
+  font-size: 11px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.open-coding-workspace-button:hover {
+  background: #f8fafc;
+  border-color: #cbd5e1;
+}
+
+.coding-session-rename,
+.coding-session-delete {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  width: 27px;
+  height: 27px;
+  padding: 0;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: #64748b;
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.coding-session-rename:hover,
+.coding-session-delete:hover {
+  background: #f1f5f9;
+  color: #0f172a;
+}
+
+[data-coding-session-id] {
+  position: relative;
+}
+
+[data-coding-session-id].active {
+  outline: 1px solid rgba(15, 23, 42, 0.08);
+}

@@ -5762,3 +5762,830 @@ body{
     scanPreviewButtons();
   }, 1000);
 })();
+
+
+/* =========================================================
+   CODING FIX + NEXT BATCH
+   ========================================================= */
+
+(function installCodingFixAndNextBatch() {
+  const CODING_ACTIVE_KEY =
+    "adnova_coding_active_session_v1";
+
+  const CODING_DRAFT_KEY =
+    "adnova_coding_draft_v1";
+
+  let clearingCodingComposer = false;
+
+  function getWorkspace() {
+    return document.getElementById("coding-workspace");
+  }
+
+  function getCodingTextarea() {
+    const workspace = getWorkspace();
+
+    if (!workspace) {
+      return null;
+    }
+
+    return workspace.querySelector(
+      "#coding-message-input, #coding-input, textarea"
+    );
+  }
+
+  function clearCodingComposer() {
+    const textarea =
+      getCodingTextarea();
+
+    if (!textarea) {
+      return;
+    }
+
+    if (clearingCodingComposer) {
+      return;
+    }
+
+    clearingCodingComposer = true;
+
+    textarea.value = "";
+
+    textarea.dispatchEvent(
+      new Event("input", {
+        bubbles: true
+      })
+    );
+
+    textarea.dispatchEvent(
+      new Event("change", {
+        bubbles: true
+      })
+    );
+
+    try {
+      localStorage.removeItem(
+        CODING_DRAFT_KEY
+      );
+    } catch {
+      // Ignore storage failure.
+    }
+
+    requestAnimationFrame(() => {
+      clearingCodingComposer = false;
+
+      if (
+        currentMode === "coding" &&
+        !isGenerating
+      ) {
+        textarea.focus();
+      }
+    });
+  }
+
+  /*
+   * FIX THE DOUBLE-SEND / STUCK TEXT BUG
+   *
+   * The coding composer can have its own submit handler.
+   * We let that handler send first, then clear the visible
+   * coding composer immediately afterward.
+   */
+
+  document.addEventListener(
+    "submit",
+    event => {
+      const form =
+        event.target;
+
+      if (!(form instanceof HTMLFormElement)) {
+        return;
+      }
+
+      const workspace =
+        form.closest("#coding-workspace");
+
+      if (!workspace) {
+        return;
+      }
+
+      const textarea =
+        getCodingTextarea();
+
+      if (!textarea) {
+        return;
+      }
+
+      setTimeout(() => {
+        if (
+          currentMode === "coding"
+        ) {
+          clearCodingComposer();
+        }
+      }, 0);
+    },
+    false
+  );
+
+  /*
+   * Also cover coding buttons that send without a form.
+   */
+
+  document.addEventListener(
+    "click",
+    event => {
+      const target =
+        event.target;
+
+      const workspace =
+        target.closest?.(
+          "#coding-workspace"
+        );
+
+      if (!workspace) {
+        return;
+      }
+
+      const button =
+        target.closest(
+          "#coding-send-button, [data-coding-send], .coding-send-button"
+        );
+
+      if (!button) {
+        return;
+      }
+
+      setTimeout(() => {
+        if (
+          currentMode === "coding"
+        ) {
+          clearCodingComposer();
+        }
+      }, 0);
+    },
+    false
+  );
+
+  /*
+   * Hard keyboard guarantee.
+   *
+   * Enter:
+   *   SEND
+   *
+   * Shift + Enter:
+   *   NEW LINE
+   */
+
+  document.addEventListener(
+    "keydown",
+    event => {
+      const target =
+        event.target;
+
+      if (
+        !(target instanceof HTMLTextAreaElement)
+      ) {
+        return;
+      }
+
+      const workspace =
+        target.closest("#coding-workspace");
+
+      if (!workspace) {
+        return;
+      }
+
+      if (
+        event.key !== "Enter" ||
+        event.shiftKey ||
+        event.ctrlKey ||
+        event.metaKey ||
+        event.altKey
+      ) {
+        return;
+      }
+
+      event.preventDefault();
+      event.stopPropagation();
+      event.stopImmediatePropagation();
+
+      const text =
+        String(target.value || "").trim();
+
+      if (!text || isGenerating) {
+        return;
+      }
+
+      /*
+       * Prefer the coding form if one exists.
+       */
+
+      const form =
+        target.closest("form");
+
+      if (form) {
+        form.requestSubmit();
+      } else {
+        const button =
+          workspace.querySelector(
+            "#coding-send-button, [data-coding-send], .coding-send-button"
+          );
+
+        if (
+          button &&
+          !button.disabled
+        ) {
+          button.click();
+        }
+      }
+
+      setTimeout(() => {
+        clearCodingComposer();
+      }, 0);
+    },
+    true
+  );
+
+  /*
+   * =======================================================
+   * ACTIVE CODING SESSION
+   * =======================================================
+   */
+
+  function getCodingHistory() {
+    try {
+      const raw =
+        localStorage.getItem(
+          "adnova_coding_history_v1"
+        );
+
+      const parsed =
+        raw
+          ? JSON.parse(raw)
+          : [];
+
+      return Array.isArray(parsed)
+        ? parsed
+        : [];
+    } catch {
+      return [];
+    }
+  }
+
+  function saveCodingHistory(history) {
+    try {
+      localStorage.setItem(
+        "adnova_coding_history_v1",
+        JSON.stringify(history.slice(0, 50))
+      );
+    } catch {
+      // Ignore storage failure.
+    }
+  }
+
+  function getActiveCodingSessionId() {
+    try {
+      return localStorage.getItem(
+        CODING_ACTIVE_KEY
+      );
+    } catch {
+      return null;
+    }
+  }
+
+  function setActiveCodingSessionId(id) {
+    if (!id) {
+      return;
+    }
+
+    try {
+      localStorage.setItem(
+        CODING_ACTIVE_KEY,
+        id
+      );
+    } catch {
+      // Ignore storage failure.
+    }
+  }
+
+  function findCodingSession(id) {
+    return getCodingHistory().find(
+      session =>
+        session &&
+        session.id === id
+    );
+  }
+
+  function ensureActiveCodingSession() {
+    const history =
+      getCodingHistory();
+
+    const activeId =
+      getActiveCodingSessionId();
+
+    if (
+      activeId &&
+      history.some(
+        session =>
+          session &&
+          session.id === activeId
+      )
+    ) {
+      return activeId;
+    }
+
+    if (history.length) {
+      setActiveCodingSessionId(
+        history[0].id
+      );
+
+      return history[0].id;
+    }
+
+    return null;
+  }
+
+  function renameCodingSession(
+    sessionId,
+    newTitle
+  ) {
+    const title =
+      String(newTitle || "")
+        .replace(/\s+/g, " ")
+        .trim();
+
+    if (!title) {
+      return;
+    }
+
+    const history =
+      getCodingHistory();
+
+    const session =
+      history.find(
+        item =>
+          item &&
+          item.id === sessionId
+      );
+
+    if (!session) {
+      return;
+    }
+
+    session.title =
+      title.slice(0, 70);
+
+    session.updatedAt =
+      Date.now();
+
+    saveCodingHistory(history);
+
+    try {
+      if (
+        typeof renderCodingHistory ===
+        "function"
+      ) {
+        renderCodingHistory();
+      }
+    } catch {
+      // Keep current UI working if old renderer differs.
+    }
+
+    refreshCodingSessionControls();
+  }
+
+  function deleteCodingSession(
+    sessionId
+  ) {
+    const history =
+      getCodingHistory();
+
+    const next =
+      history.filter(
+        session =>
+          !session ||
+          session.id !== sessionId
+      );
+
+    saveCodingHistory(next);
+
+    const activeId =
+      getActiveCodingSessionId();
+
+    if (activeId === sessionId) {
+      const nextActive =
+        next[0]?.id || null;
+
+      if (nextActive) {
+        setActiveCodingSessionId(
+          nextActive
+        );
+      } else {
+        try {
+          localStorage.removeItem(
+            CODING_ACTIVE_KEY
+          );
+        } catch {
+          // Ignore storage failure.
+        }
+      }
+    }
+
+    try {
+      if (
+        typeof renderCodingHistory ===
+        "function"
+      ) {
+        renderCodingHistory();
+      }
+    } catch {
+      // Ignore renderer mismatch.
+    }
+
+    refreshCodingSessionControls();
+  }
+
+  function refreshCodingSessionControls() {
+    const workspace =
+      getWorkspace();
+
+    if (!workspace) {
+      return;
+    }
+
+    const history =
+      getCodingHistory();
+
+    const activeId =
+      getActiveCodingSessionId();
+
+    workspace
+      .querySelectorAll(
+        "[data-coding-session-id]"
+      )
+      .forEach(item => {
+        const id =
+          item.dataset.codingSessionId;
+
+        item.classList.toggle(
+          "active",
+          id === activeId
+        );
+      });
+
+    workspace
+      .querySelectorAll(
+        ".coding-session-rename"
+      )
+      .forEach(button => {
+        const id =
+          button.dataset.sessionId;
+
+        button.onclick =
+          event => {
+            event.preventDefault();
+            event.stopPropagation();
+
+            const session =
+              history.find(
+                item =>
+                  item &&
+                  item.id === id
+              );
+
+            if (!session) {
+              return;
+            }
+
+            const title =
+              window.prompt(
+                "Rename coding session",
+                session.title ||
+                "Coding session"
+              );
+
+            if (
+              title !== null
+            ) {
+              renameCodingSession(
+                id,
+                title
+              );
+            }
+          };
+      });
+
+    workspace
+      .querySelectorAll(
+        ".coding-session-delete"
+      )
+      .forEach(button => {
+        const id =
+          button.dataset.sessionId;
+
+        button.onclick =
+          event => {
+            event.preventDefault();
+            event.stopPropagation();
+
+            const session =
+              history.find(
+                item =>
+                  item &&
+                  item.id === id
+              );
+
+            if (!session) {
+              return;
+            }
+
+            const confirmed =
+              window.confirm(
+                `Delete "${session.title || "Coding session"}"?`
+              );
+
+            if (confirmed) {
+              deleteCodingSession(id);
+            }
+          };
+      });
+  }
+
+  /*
+   * Track whichever coding session the user most recently clicked.
+   */
+
+  document.addEventListener(
+    "click",
+    event => {
+      const item =
+        event.target.closest?.(
+          "[data-coding-session-id]"
+        );
+
+      if (!item) {
+        return;
+      }
+
+      const id =
+        item.dataset.codingSessionId;
+
+      if (id) {
+        setActiveCodingSessionId(id);
+      }
+    }
+  );
+
+  /*
+   * =======================================================
+   * CODE -> WORKSPACE
+   * =======================================================
+   */
+
+  function getCodeBlock(eventTarget) {
+    return eventTarget.closest?.(
+      ".code-block"
+    );
+  }
+
+  function getBlockLanguage(block) {
+    return String(
+      block?.querySelector(
+        ".code-language"
+      )?.textContent || ""
+    )
+      .trim()
+      .toLowerCase();
+  }
+
+  function getBlockCode(block) {
+    return (
+      block?.querySelector(
+        "pre code"
+      )?.textContent || ""
+    ).trim();
+  }
+
+  function supportedWorkspaceLanguage(
+    language
+  ) {
+    return [
+      "js",
+      "javascript",
+      "jsx",
+      "ts",
+      "typescript",
+      "tsx",
+      "html",
+      "css",
+      "json",
+      "python",
+      "py",
+      "bash",
+      "sh"
+    ].includes(language);
+  }
+
+  function openCodeInCodingWorkspace(
+    code,
+    language
+  ) {
+    if (!code) {
+      return;
+    }
+
+    setCurrentMode("coding");
+
+    const textarea =
+      getCodingTextarea();
+
+    if (textarea) {
+      const prompt =
+        [
+          "Work with this code.",
+          `Language: ${language || "code"}`,
+          "",
+          "```" +
+          (language || "") +
+          "\n" +
+          code +
+          "\n```"
+        ].join("\n");
+
+      textarea.value =
+        prompt;
+
+      textarea.dispatchEvent(
+        new Event("input", {
+          bubbles: true
+        })
+      );
+
+      textarea.focus();
+    }
+
+    try {
+      localStorage.setItem(
+        CODING_DRAFT_KEY,
+        String(
+          textarea?.value || ""
+        )
+      );
+    } catch {
+      // Ignore storage failure.
+    }
+
+    requestAnimationFrame(() => {
+      const input =
+        getCodingTextarea();
+
+      input?.focus();
+    });
+  }
+
+  function addOpenWorkspaceButton(
+    codeBlock
+  ) {
+    if (!codeBlock) {
+      return;
+    }
+
+    if (
+      codeBlock.querySelector(
+        ".open-coding-workspace-button"
+      )
+    ) {
+      return;
+    }
+
+    const language =
+      getBlockLanguage(
+        codeBlock
+      );
+
+    if (
+      !supportedWorkspaceLanguage(
+        language
+      )
+    ) {
+      return;
+    }
+
+    const header =
+      codeBlock.querySelector(
+        ".code-header"
+      );
+
+    if (!header) {
+      return;
+    }
+
+    const button =
+      document.createElement(
+        "button"
+      );
+
+    button.type =
+      "button";
+
+    button.className =
+      "open-coding-workspace-button";
+
+    button.textContent =
+      "Open in coding";
+
+    button.title =
+      "Open this code in Coding mode";
+
+    button.addEventListener(
+      "click",
+      event => {
+        event.preventDefault();
+        event.stopPropagation();
+
+        openCodeInCodingWorkspace(
+          getBlockCode(codeBlock),
+          language
+        );
+      }
+    );
+
+    header.appendChild(
+      button
+    );
+  }
+
+  function scanCodeBlocks() {
+    document
+      .querySelectorAll(
+        ".code-block"
+      )
+      .forEach(
+        addOpenWorkspaceButton
+      );
+
+    refreshCodingSessionControls();
+  }
+
+  /*
+   * Re-scan whenever streamed AI output creates code.
+   */
+
+  const observer =
+    new MutationObserver(
+      mutations => {
+        let changed = false;
+
+        mutations.forEach(
+          mutation => {
+            if (
+              mutation.type ===
+                "childList" &&
+              mutation.addedNodes.length
+            ) {
+              changed = true;
+            }
+          }
+        );
+
+        if (changed) {
+          scanCodeBlocks();
+        }
+      }
+    );
+
+  observer.observe(
+    document.body,
+    {
+      childList: true,
+      subtree: true
+    }
+  );
+
+  /*
+   * Restore active session after Coding mode opens.
+   */
+
+  document.addEventListener(
+    "click",
+    () => {
+      if (
+        currentMode !== "coding"
+      ) {
+        return;
+      }
+
+      const activeId =
+        ensureActiveCodingSession();
+
+      if (activeId) {
+        setActiveCodingSessionId(
+          activeId
+        );
+      }
+
+      setTimeout(() => {
+        refreshCodingSessionControls();
+      }, 50);
+    }
+  );
+
+  scanCodeBlocks();
+})();
