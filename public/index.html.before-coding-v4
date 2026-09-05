@@ -263,4 +263,3 @@ document.addEventListener("DOMContentLoaded", () => {
 <script src="/js/app.js"></script>
 </body>
 </html>
-<script src="/js/adnova-core-v2.js"></script>

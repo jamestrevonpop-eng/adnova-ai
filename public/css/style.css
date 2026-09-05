@@ -15271,3 +15271,1787 @@ body.coding-workspace-active
     right: 10px;
   }
 }
+
+
+/* =========================================================
+   SETTINGS / HISTORY CONTROLS
+   ========================================================= */
+
+.history-toggle-button {
+  top: 58px !important;
+}
+
+.new-chat-button {
+  left: auto !important;
+  right: 18px !important;
+}
+
+body.coding-workspace-active .new-chat-button {
+  display: none !important;
+}
+
+.chat-history-footer {
+  margin-top: auto;
+  padding: 10px 12px 14px;
+  border-top: 1px solid #edf0f4;
+}
+
+.chat-history-settings-button {
+  width: 100%;
+  min-height: 40px;
+  border: 0;
+  border-radius: 10px;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 0 12px;
+  background: transparent;
+  color: #475569;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  text-align: left;
+}
+
+.chat-history-settings-button:hover {
+  background: #f4f6f8;
+  color: #202124;
+}
+
+.chat-history-settings-icon {
+  width: 26px;
+  height: 26px;
+  display: grid;
+  place-items: center;
+  border-radius: 8px;
+  background: #f1f5f9;
+  font-size: 14px;
+}
+
+.adnova-settings-panel {
+  position: fixed;
+  top: 18px;
+  right: 18px;
+  width: min(430px, calc(100vw - 36px));
+  max-height: calc(100vh - 36px);
+  display: flex;
+  flex-direction: column;
+  border: 1px solid #e0e5ec;
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.98);
+  box-shadow: 0 20px 55px rgba(15, 23, 42, 0.16);
+  z-index: 120;
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  transform: translateY(-8px) scale(0.98);
+  transition:
+    opacity 0.18s ease,
+    transform 0.18s ease,
+    visibility 0.18s ease;
+  overflow: hidden;
+}
+
+.adnova-settings-panel.open {
+  opacity: 1;
+  visibility: visible;
+  pointer-events: auto;
+  transform: translateY(0) scale(1);
+}
+
+.adnova-settings-header {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 20px 20px 15px;
+  border-bottom: 1px solid #edf0f4;
+}
+
+.adnova-settings-kicker {
+  color: #2563eb;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+}
+
+.adnova-settings-header h2 {
+  margin: 2px 0 4px;
+  color: #111827;
+  font-size: 21px;
+  line-height: 1.2;
+}
+
+.adnova-settings-header p {
+  margin: 0;
+  color: #7b8492;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.adnova-settings-close {
+  width: 34px;
+  height: 34px;
+  flex: 0 0 34px;
+  border: 0;
+  border-radius: 50%;
+  background: #f4f6f8;
+  color: #64748b;
+  font: inherit;
+  font-size: 22px;
+  cursor: pointer;
+}
+
+.adnova-settings-close:hover {
+  background: #e9edf2;
+  color: #202124;
+}
+
+.adnova-settings-body {
+  overflow-y: auto;
+  padding: 2px 18px 18px;
+}
+
+.adnova-settings-section {
+  padding: 16px 2px;
+  border-bottom: 1px solid #edf0f4;
+}
+
+.adnova-settings-section:last-child {
+  border-bottom: 0;
+}
+
+.adnova-settings-section-title {
+  margin-bottom: 10px;
+  color: #6b7280;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.adnova-storage-card {
+  padding: 12px;
+  border: 1px solid #e5e9ef;
+  border-radius: 12px;
+  background: #fafbfd;
+}
+
+.adnova-storage-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.adnova-storage-row strong,
+.adnova-setting-row strong {
+  display: block;
+  color: #1f2937;
+  font-size: 13px;
+}
+
+.adnova-storage-row span,
+.adnova-setting-row small,
+.adnova-settings-help,
+.adnova-code-agent-footer span,
+.adnova-storage-values {
+  color: #8a93a2;
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+.adnova-danger-button,
+.adnova-primary-button {
+  flex: 0 0 auto;
+  border: 0;
+  border-radius: 9px;
+  padding: 7px 10px;
+  font: inherit;
+  font-size: 11px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.adnova-danger-button {
+  background: #fff1f1;
+  color: #bd2f2f;
+}
+
+.adnova-danger-button:hover {
+  background: #ffe5e5;
+}
+
+.adnova-primary-button {
+  background: #2563eb;
+  color: #ffffff;
+}
+
+.adnova-primary-button:hover {
+  background: #1d4ed8;
+}
+
+.adnova-storage-bar {
+  height: 7px;
+  margin-top: 12px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: #e8edf3;
+}
+
+.adnova-storage-bar-fill {
+  width: 0;
+  height: 100%;
+  border-radius: inherit;
+  background: #2563eb;
+  transition: width 0.25s ease;
+}
+
+.adnova-storage-values {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 8px;
+}
+
+.adnova-storage-values strong {
+  color: #475569;
+}
+
+.adnova-setting-row {
+  min-height: 54px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 8px 0;
+  cursor: pointer;
+}
+
+.adnova-setting-row span {
+  min-width: 0;
+}
+
+.adnova-setting-row input {
+  width: 18px;
+  height: 18px;
+  flex: 0 0 18px;
+  accent-color: #2563eb;
+  cursor: pointer;
+}
+
+.adnova-settings-help {
+  margin: 0 0 9px;
+}
+
+.adnova-code-agent-textarea {
+  width: 100%;
+  min-height: 150px;
+  resize: vertical;
+  padding: 11px 12px;
+  border: 1px solid #d9e0e8;
+  border-radius: 11px;
+  outline: none;
+  background: #ffffff;
+  color: #1f2937;
+  font: inherit;
+  font-size: 12px;
+  line-height: 1.55;
+}
+
+.adnova-code-agent-textarea:focus {
+  border-color: #93b4eb;
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.08);
+}
+
+.adnova-code-agent-footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+  margin-top: 8px;
+}
+
+.adnova-settings-status {
+  padding: 2px 2px 12px;
+  color: #2563eb;
+  font-size: 11px;
+}
+
+body.adnova-compact-interface .messages {
+  padding-top: 24px;
+}
+
+body.adnova-compact-interface .message {
+  margin-bottom: 18px;
+}
+
+body.adnova-compact-interface .message-bubble p {
+  margin-bottom: 10px;
+}
+
+body.adnova-reduced-motion *,
+body.adnova-reduced-motion *::before,
+body.adnova-reduced-motion *::after {
+  animation-duration: 0.001ms !important;
+  animation-iteration-count: 1 !important;
+  transition-duration: 0.001ms !important;
+}
+
+body.adnova-hide-mode-badge #active-mode-indicator,
+body.adnova-hide-mode-badge .active-mode-indicator {
+  display: none !important;
+}
+
+@media (max-width: 700px) {
+  .history-toggle-button {
+    top: 54px !important;
+  }
+
+  .adnova-settings-panel {
+    top: 10px;
+    right: 10px;
+    width: calc(100vw - 20px);
+    max-height: calc(100vh - 20px);
+  }
+}
+
+/* =========================================================
+   ADNOVA NEXT SETTINGS BATCH
+   ========================================================= */
+
+.new-chat-button {
+  left: auto !important;
+  right: 18px !important;
+  top: 18px !important;
+}
+
+body.coding-workspace-active .new-chat-button {
+  display: block !important;
+}
+
+.adnova-notification-container {
+  position: fixed;
+  top: 72px;
+  right: 18px;
+  z-index: 300;
+  width: min(360px, calc(100vw - 36px));
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+  pointer-events: none;
+}
+
+.adnova-notification {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 46px;
+  padding: 9px 10px;
+  border: 1px solid #e0e5ec;
+  border-radius: 12px;
+  background: #ffffff;
+  color: #334155;
+  box-shadow: 0 12px 32px rgba(15, 23, 42, 0.13);
+  opacity: 0;
+  transform: translateY(-8px);
+  transition:
+    opacity 0.18s ease,
+    transform 0.18s ease;
+  pointer-events: auto;
+}
+
+.adnova-notification.visible {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.adnova-notification-success {
+  border-color: #cfe8d5;
+}
+
+.adnova-notification-error {
+  border-color: #f0cccc;
+}
+
+.adnova-notification-icon {
+  width: 26px;
+  height: 26px;
+  flex: 0 0 26px;
+  display: grid;
+  place-items: center;
+  border-radius: 8px;
+  background: #eef2f7;
+  color: #475569;
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.adnova-notification-success
+.adnova-notification-icon {
+  background: #edf8ef;
+  color: #2f7d3e;
+}
+
+.adnova-notification-error
+.adnova-notification-icon {
+  background: #fff0f0;
+  color: #c13a3a;
+}
+
+.adnova-notification-text {
+  flex: 1;
+  min-width: 0;
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.adnova-notification-close {
+  width: 27px;
+  height: 27px;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: #94a3b8;
+  font: inherit;
+  font-size: 18px;
+  cursor: pointer;
+}
+
+.adnova-notification-close:hover {
+  background: #f1f5f9;
+  color: #475569;
+}
+
+.adnova-confirm-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 400;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 18px;
+  background: rgba(15, 23, 42, 0.18);
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  transition:
+    opacity 0.18s ease,
+    visibility 0.18s ease;
+}
+
+.adnova-confirm-overlay.open {
+  opacity: 1;
+  visibility: visible;
+  pointer-events: auto;
+}
+
+.adnova-confirm-card {
+  width: min(390px, 100%);
+  padding: 22px;
+  border: 1px solid #e0e5ec;
+  border-radius: 16px;
+  background: #ffffff;
+  box-shadow: 0 22px 60px rgba(15, 23, 42, 0.2);
+}
+
+.adnova-confirm-icon {
+  width: 34px;
+  height: 34px;
+  display: grid;
+  place-items: center;
+  border-radius: 10px;
+  background: #fff0f0;
+  color: #bf3030;
+  font-size: 15px;
+  font-weight: 800;
+}
+
+.adnova-confirm-card h3 {
+  margin: 14px 0 6px;
+  color: #111827;
+  font-size: 18px;
+}
+
+.adnova-confirm-card p {
+  margin: 0;
+  color: #737d8c;
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.adnova-confirm-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 18px;
+}
+
+.adnova-confirm-actions button {
+  border: 0;
+  border-radius: 9px;
+  padding: 8px 12px;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.adnova-confirm-cancel {
+  background: #f1f5f9;
+  color: #475569;
+}
+
+.adnova-confirm-danger {
+  background: #c43b3b;
+  color: #ffffff;
+}
+
+.adnova-confirm-danger:hover {
+  background: #ad3030;
+}
+
+.adnova-usage-grid {
+  display: grid;
+  grid-template-columns:
+    repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  margin-bottom: 9px;
+}
+
+.adnova-usage-card {
+  min-width: 0;
+  padding: 10px;
+  border: 1px solid #e5e9ef;
+  border-radius: 10px;
+  background: #fafbfd;
+}
+
+.adnova-usage-card span {
+  display: block;
+  color: #8a93a2;
+  font-size: 9px;
+  line-height: 1.35;
+}
+
+.adnova-usage-card strong {
+  display: block;
+  margin-top: 4px;
+  color: #1f2937;
+  font-size: 18px;
+  line-height: 1.15;
+}
+
+#chat-history-sidebar {
+  display: flex;
+  flex-direction: column;
+}
+
+@media (max-width: 700px) {
+  .adnova-notification-container {
+    top: 62px;
+    right: 10px;
+    width: calc(100vw - 20px);
+  }
+
+  .adnova-usage-grid {
+    grid-template-columns:
+      repeat(2, minmax(0, 1fr));
+  }
+
+  .adnova-usage-card:last-child {
+    grid-column: span 2;
+  }
+}
+
+/* =========================================================
+   ADNOVA PROJECTS TERMINAL BATCH
+   ========================================================= */
+
+/* NEW CHAT UNDER HISTORY BUTTON */
+
+.history-toggle-button {
+  top: 58px !important;
+  left: 18px !important;
+  right: auto !important;
+}
+
+.new-chat-button {
+  top: 108px !important;
+  left: 18px !important;
+  right: auto !important;
+}
+
+body.coding-workspace-active .new-chat-button {
+  display: block !important;
+}
+
+/* PROJECTS BUTTON */
+
+.adnova-projects-button {
+  position: fixed;
+  top: 155px;
+  left: 18px;
+  z-index: 60;
+  min-width: 108px;
+  min-height: 38px;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 11px;
+  border: 1px solid #e0e3e7;
+  border-radius: 10px;
+  background: #ffffff;
+  color: #202124;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+}
+
+.adnova-projects-button:hover {
+  background: #f6f7f8;
+}
+
+.adnova-projects-button.disabled,
+.adnova-projects-button:disabled {
+  opacity: 0.48;
+  cursor: not-allowed;
+}
+
+.adnova-projects-button-icon {
+  width: 23px;
+  height: 23px;
+  display: grid;
+  place-items: center;
+  border-radius: 7px;
+  background: #f1f5f9;
+}
+
+.adnova-projects-button-icon svg {
+  width: 14px;
+  height: 14px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.7;
+}
+
+/* LIVE CACHE */
+
+.adnova-cache-footer {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 10px;
+  color: #8a93a2;
+  font-size: 10px;
+}
+
+.adnova-cache-footer strong {
+  color: #475569;
+}
+
+/* MEMORY */
+
+.adnova-memory-heading {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+  margin-top: 10px;
+  margin-bottom: 8px;
+}
+
+.adnova-memory-heading span {
+  color: #8a93a2;
+  font-size: 11px;
+}
+
+.adnova-memory-list {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  max-height: 200px;
+  overflow-y: auto;
+}
+
+.adnova-memory-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 9px 10px;
+  border: 1px solid #e5e9ef;
+  border-radius: 10px;
+  background: #fafbfd;
+}
+
+.adnova-memory-item-text {
+  flex: 1;
+  min-width: 0;
+  color: #475569;
+  font-size: 11px;
+  line-height: 1.45;
+}
+
+.adnova-memory-remove {
+  width: 24px;
+  height: 24px;
+  flex: 0 0 24px;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: #94a3b8;
+  cursor: pointer;
+  font: inherit;
+  font-size: 17px;
+}
+
+.adnova-memory-remove:hover {
+  background: #eef2f6;
+  color: #475569;
+}
+
+.adnova-memory-empty {
+  padding: 12px;
+  border: 1px dashed #dce2e9;
+  border-radius: 10px;
+  color: #9aa3b1;
+  font-size: 11px;
+  text-align: center;
+}
+
+/* PROJECT PAGE */
+
+.adnova-projects-page {
+  position: fixed;
+  inset: 0;
+  z-index: 250;
+  display: flex;
+  flex-direction: column;
+  background: #ffffff;
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  transform: translateY(10px);
+  transition:
+    opacity 0.18s ease,
+    transform 0.18s ease,
+    visibility 0.18s ease;
+}
+
+.adnova-projects-page.open {
+  opacity: 1;
+  visibility: visible;
+  pointer-events: auto;
+  transform: translateY(0);
+}
+
+.adnova-projects-header {
+  min-height: 66px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+  padding: 0 20px;
+  border-bottom: 1px solid #e9edf2;
+}
+
+.adnova-projects-header-left {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+}
+
+.adnova-projects-back {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  border: 0;
+  background: transparent;
+  color: #64748b;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.adnova-projects-back:hover {
+  color: #202124;
+}
+
+.adnova-projects-back span {
+  font-size: 21px;
+  line-height: 1;
+}
+
+.adnova-projects-brand {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.adnova-projects-brand strong {
+  color: #111827;
+  font-size: 15px;
+}
+
+.adnova-projects-brand span,
+.adnova-projects-limit {
+  color: #94a3b8;
+  font-size: 10px;
+}
+
+.adnova-projects-layout {
+  min-height: 0;
+  flex: 1;
+  display: grid;
+  grid-template-columns: 260px minmax(0, 1fr);
+}
+
+.adnova-projects-sidebar {
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  border-right: 1px solid #e9edf2;
+  background: #fbfcfd;
+}
+
+.adnova-projects-sidebar-top {
+  padding: 15px;
+  border-bottom: 1px solid #e9edf2;
+}
+
+.adnova-projects-sidebar-top strong {
+  display: block;
+  margin-bottom: 9px;
+  color: #374151;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+}
+
+.adnova-project-primary,
+.adnova-project-secondary {
+  border: 0;
+  border-radius: 9px;
+  padding: 8px 11px;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 650;
+  cursor: pointer;
+}
+
+.adnova-project-primary {
+  background: #2563eb;
+  color: #ffffff;
+}
+
+.adnova-project-primary:hover {
+  background: #1d4ed8;
+}
+
+.adnova-project-secondary {
+  background: #f1f5f9;
+  color: #475569;
+}
+
+.adnova-project-secondary:hover {
+  background: #e6ebf1;
+}
+
+.adnova-project-list {
+  flex: 1;
+  overflow-y: auto;
+  padding: 9px;
+}
+
+.adnova-project-item {
+  width: 100%;
+  min-height: 51px;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  border: 0;
+  border-radius: 10px;
+  padding: 7px 8px;
+  background: transparent;
+  color: #475569;
+  text-align: left;
+  cursor: pointer;
+}
+
+.adnova-project-item:hover,
+.adnova-project-item.active {
+  background: #eef3f8;
+  color: #1f2937;
+}
+
+.adnova-project-folder {
+  width: 28px;
+  height: 28px;
+  display: grid;
+  place-items: center;
+  flex: 0 0 28px;
+  border-radius: 8px;
+  background: #f1f5f9;
+}
+
+.adnova-project-folder svg {
+  width: 16px;
+  height: 16px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.5;
+}
+
+.adnova-project-item-main {
+  min-width: 0;
+}
+
+.adnova-project-item-main strong,
+.adnova-project-item-main small {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.adnova-project-item-main strong {
+  color: inherit;
+  font-size: 12px;
+}
+
+.adnova-project-item-main small {
+  margin-top: 2px;
+  color: #94a3b8;
+  font-size: 10px;
+}
+
+.adnova-project-list-empty {
+  padding: 25px 12px;
+  color: #9aa3b1;
+  font-size: 11px;
+  text-align: center;
+}
+
+.adnova-project-main {
+  min-width: 0;
+  min-height: 0;
+}
+
+.adnova-project-empty {
+  min-height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.adnova-project-create,
+.adnova-project-empty {
+  text-align: center;
+}
+
+.adnova-project-empty-icon {
+  width: 48px;
+  height: 48px;
+  display: grid;
+  place-items: center;
+  margin: 0 auto 13px;
+  border-radius: 14px;
+  background: #f1f5f9;
+  color: #64748b;
+}
+
+.adnova-project-empty h2 {
+  margin: 0;
+  color: #111827;
+  font-size: 20px;
+}
+
+.adnova-project-empty p {
+  max-width: 380px;
+  margin: 8px auto 17px;
+  color: #8a93a2;
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.adnova-project-create {
+  width: min(390px, calc(100% - 40px));
+  margin: auto;
+}
+
+.adnova-project-create input {
+  width: 100%;
+  height: 42px;
+  margin-bottom: 8px;
+  padding: 0 11px;
+  border: 1px solid #dce2e9;
+  border-radius: 10px;
+  outline: none;
+  background: #ffffff;
+  color: #1f2937;
+  font: inherit;
+  font-size: 12px;
+}
+
+.adnova-project-create input:focus {
+  border-color: #93b4eb;
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.08);
+}
+
+.adnova-project-create-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.adnova-project-workspace {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
+.adnova-project-workspace-header {
+  min-height: 67px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 15px;
+  padding: 0 18px;
+  border-bottom: 1px solid #e9edf2;
+}
+
+.adnova-project-name {
+  color: #111827;
+  font-size: 16px;
+  font-weight: 700;
+}
+
+.adnova-project-branch {
+  margin-top: 3px;
+  color: #94a3b8;
+  font-size: 10px;
+}
+
+.adnova-project-delete {
+  border: 0;
+  border-radius: 8px;
+  padding: 7px 10px;
+  background: #fff1f1;
+  color: #b73636;
+  font: inherit;
+  font-size: 11px;
+  font-weight: 650;
+  cursor: pointer;
+}
+
+.adnova-project-body {
+  min-height: 0;
+  flex: 1;
+  display: grid;
+  grid-template-columns: 220px minmax(0, 1fr);
+}
+
+.adnova-project-chat-sidebar {
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  border-right: 1px solid #e9edf2;
+  background: #fbfcfd;
+}
+
+.adnova-project-branch-row {
+  display: flex;
+  gap: 6px;
+  padding: 10px;
+  border-bottom: 1px solid #e9edf2;
+}
+
+.adnova-project-branch-row select,
+.adnova-project-branch-row > button,
+.adnova-project-new-branch {
+  height: 34px;
+  border: 1px solid #dce2e9;
+  border-radius: 8px;
+  outline: none;
+  background: #ffffff;
+  color: #475569;
+  font: inherit;
+  font-size: 11px;
+}
+
+.adnova-project-branch-row select {
+  min-width: 0;
+  flex: 1;
+  padding: 0 7px;
+}
+
+.adnova-project-branch-row > button {
+  width: 34px;
+  flex: 0 0 34px;
+  cursor: pointer;
+}
+
+.adnova-project-new-branch {
+  min-width: 0;
+  flex: 1;
+  padding: 0 8px;
+}
+
+.adnova-project-chat-list {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 8px;
+}
+
+.adnova-project-chat-item {
+  width: 100%;
+  padding: 9px;
+  border: 0;
+  border-radius: 9px;
+  background: transparent;
+  color: #64748b;
+  text-align: left;
+  font: inherit;
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.adnova-project-chat-item:hover,
+.adnova-project-chat-item.active {
+  background: #edf2f7;
+  color: #1f2937;
+}
+
+.adnova-project-chat-empty {
+  padding: 18px 8px;
+  color: #9aa3b1;
+  font-size: 10px;
+  text-align: center;
+}
+
+.adnova-project-chat-sidebar >
+.adnova-project-secondary {
+  margin: 8px;
+}
+
+.adnova-project-chat {
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.adnova-project-chat-messages {
+  min-height: 0;
+  flex: 1;
+  overflow-y: auto;
+  padding: 30px min(7vw, 70px) 115px;
+}
+
+.adnova-project-message {
+  width: 100%;
+  display: flex;
+  margin-bottom: 20px;
+}
+
+.adnova-project-message.user {
+  justify-content: flex-end;
+}
+
+.adnova-project-message.assistant {
+  justify-content: flex-start;
+}
+
+.adnova-project-message-bubble {
+  max-width: 800px;
+  color: #202124;
+  font-size: 14px;
+  line-height: 1.65;
+}
+
+.adnova-project-message.user
+.adnova-project-message-bubble {
+  max-width: 75%;
+  padding: 10px 14px;
+  border-radius: 16px;
+  background: #f1f5f9;
+}
+
+.adnova-project-message-empty {
+  min-height: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  color: #94a3b8;
+}
+
+.adnova-project-message-empty strong {
+  color: #374151;
+  font-size: 16px;
+}
+
+.adnova-project-message-empty span {
+  margin-top: 5px;
+  font-size: 11px;
+}
+
+.adnova-project-composer {
+  position: fixed;
+  right: 22px;
+  bottom: 17px;
+  left: 500px;
+  z-index: 15;
+  display: flex;
+  gap: 8px;
+  align-items: flex-end;
+  margin-left: 280px;
+  padding: 8px;
+  border: 1px solid #d8dee6;
+  border-radius: 15px;
+  background: #ffffff;
+  box-shadow: 0 8px 28px rgba(15, 23, 42, 0.08);
+}
+
+.adnova-project-composer textarea {
+  flex: 1;
+  min-height: 42px;
+  max-height: 150px;
+  resize: none;
+  border: 0;
+  outline: none;
+  padding: 9px 8px;
+  background: transparent;
+  color: #202124;
+  font: inherit;
+  font-size: 13px;
+}
+
+.adnova-project-send {
+  height: 40px;
+  border: 0;
+  border-radius: 11px;
+  padding: 0 14px;
+  background: #2563eb;
+  color: #ffffff;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+/* SAFE CODING TERMINAL */
+
+.adnova-coding-terminal {
+  margin-top: 10px;
+  border: 1px solid #dce2e9;
+  border-radius: 12px;
+  background: #0f172a;
+  color: #e2e8f0;
+  overflow: hidden;
+}
+
+.adnova-coding-terminal-header {
+  min-height: 38px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0 10px;
+  border-bottom: 1px solid #273449;
+}
+
+.adnova-coding-terminal-header strong,
+.adnova-coding-terminal-header span {
+  display: block;
+}
+
+.adnova-coding-terminal-header strong {
+  font-size: 12px;
+  color: #ffffff;
+}
+
+.adnova-coding-terminal-header span {
+  margin-top: 1px;
+  font-size: 9px;
+  color: #94a3b8;
+}
+
+.adnova-coding-terminal-header button {
+  border: 0;
+  border-radius: 7px;
+  padding: 5px 8px;
+  background: #1e293b;
+  color: #cbd5e1;
+  font: inherit;
+  font-size: 10px;
+  cursor: pointer;
+}
+
+.adnova-coding-terminal-output {
+  max-height: 220px;
+  overflow-y: auto;
+  padding: 10px;
+  font-family:
+    "SFMono-Regular",
+    Consolas,
+    "Liberation Mono",
+    Menlo,
+    monospace;
+  font-size: 11px;
+  line-height: 1.55;
+}
+
+.adnova-terminal-command {
+  margin-top: 5px;
+  color: #f8fafc;
+}
+
+.adnova-terminal-result {
+  margin: 2px 0 5px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  color: #cbd5e1;
+  font: inherit;
+}
+
+.adnova-coding-terminal-form {
+  height: 38px;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 0 10px;
+  border-top: 1px solid #273449;
+}
+
+.adnova-coding-terminal-form > span {
+  color: #60a5fa;
+  font-weight: 800;
+}
+
+.adnova-coding-terminal-form input {
+  min-width: 0;
+  flex: 1;
+  border: 0;
+  outline: none;
+  background: transparent;
+  color: #ffffff;
+  font: inherit;
+  font-size: 11px;
+}
+
+.adnova-coding-terminal-form input::placeholder {
+  color: #64748b;
+}
+
+@media (max-width: 850px) {
+  .adnova-projects-layout {
+    grid-template-columns: 210px minmax(0, 1fr);
+  }
+
+  .adnova-project-body {
+    grid-template-columns: 180px minmax(0, 1fr);
+  }
+
+  .adnova-project-composer {
+    left: 240px;
+    margin-left: 0;
+  }
+}
+
+@media (max-width: 650px) {
+  .adnova-projects-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .adnova-projects-sidebar {
+    display: none;
+  }
+
+  .adnova-project-body {
+    grid-template-columns: 1fr;
+  }
+
+  .adnova-project-chat-sidebar {
+    display: none;
+  }
+
+  .adnova-project-composer {
+    left: 10px;
+    right: 10px;
+  }
+
+  .adnova-project-chat-messages {
+    padding-left: 14px;
+    padding-right: 14px;
+  }
+}
+
+/* =========================================================
+   ADNOVA CODING STUDIO V2
+   ========================================================= */
+
+.adnova-coding-studio {
+  position: relative;
+  z-index: 5;
+  display: flex;
+  flex-direction: column;
+  min-height: 470px;
+  margin-top: 12px;
+  border: 1px solid #dbe1e8;
+  border-radius: 13px;
+  overflow: hidden;
+  background: #ffffff;
+}
+
+.adnova-studio-toolbar {
+  min-height: 47px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 0 10px;
+  border-bottom: 1px solid #e6eaf0;
+  background: #fbfcfd;
+}
+
+.adnova-studio-tabs,
+.adnova-studio-actions {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.adnova-studio-tab,
+.adnova-studio-actions button {
+  border: 0;
+  border-radius: 8px;
+  padding: 7px 10px;
+  background: transparent;
+  color: #64748b;
+  font: inherit;
+  font-size: 11px;
+  font-weight: 650;
+  cursor: pointer;
+}
+
+.adnova-studio-tab:hover,
+.adnova-studio-actions button:hover {
+  background: #eef2f6;
+  color: #334155;
+}
+
+.adnova-studio-tab.active {
+  background: #eaf1fb;
+  color: #2563eb;
+}
+
+.adnova-studio-actions button:last-child {
+  background: #2563eb;
+  color: #ffffff;
+}
+
+.adnova-studio-actions button:last-child:hover {
+  background: #1d4ed8;
+}
+
+.adnova-studio-layout {
+  min-height: 420px;
+  flex: 1;
+  display: grid;
+  grid-template-columns: 190px minmax(0, 1fr);
+}
+
+.adnova-studio-files {
+  min-width: 0;
+  border-right: 1px solid #e6eaf0;
+  background: #fafbfd;
+}
+
+.adnova-studio-files-header {
+  min-height: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 0 9px 0 11px;
+  border-bottom: 1px solid #e6eaf0;
+}
+
+.adnova-studio-files-header strong {
+  color: #64748b;
+  font-size: 9px;
+  letter-spacing: 0.08em;
+}
+
+.adnova-studio-files-header div {
+  display: flex;
+  gap: 3px;
+}
+
+.adnova-studio-files-header button {
+  width: 25px;
+  height: 25px;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: #64748b;
+  font: inherit;
+  cursor: pointer;
+}
+
+.adnova-studio-files-header button:hover {
+  background: #eaf0f6;
+  color: #334155;
+}
+
+.adnova-studio-file-list {
+  max-height: 430px;
+  overflow-y: auto;
+  padding: 5px;
+}
+
+.adnova-studio-file {
+  width: 100%;
+  min-height: 30px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: #64748b;
+  font: inherit;
+  font-size: 11px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.adnova-studio-file:hover,
+.adnova-studio-file.active {
+  background: #eaf0f6;
+  color: #1f2937;
+}
+
+.adnova-studio-file-icon {
+  width: 17px;
+  flex: 0 0 17px;
+  color: #94a3b8;
+  text-align: center;
+}
+
+.adnova-studio-file-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.adnova-studio-main {
+  min-width: 0;
+  min-height: 420px;
+  background: #ffffff;
+}
+
+.adnova-studio-view {
+  display: none;
+  height: 100%;
+  min-height: 420px;
+}
+
+.adnova-studio-view.active {
+  display: flex;
+  flex-direction: column;
+}
+
+.adnova-studio-editor-header,
+.adnova-studio-preview-header {
+  min-height: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 0 10px;
+  border-bottom: 1px solid #e6eaf0;
+  background: #fbfcfd;
+  color: #64748b;
+  font-size: 10px;
+}
+
+.adnova-studio-editor-header button,
+.adnova-studio-preview-header button {
+  border: 0;
+  border-radius: 7px;
+  padding: 5px 8px;
+  background: #f1f5f9;
+  color: #475569;
+  font: inherit;
+  font-size: 10px;
+  font-weight: 650;
+  cursor: pointer;
+}
+
+.adnova-studio-editor-header button:hover,
+.adnova-studio-preview-header button:hover {
+  background: #e6ebf1;
+}
+
+.adnova-studio-editor {
+  min-height: 375px;
+  flex: 1;
+  width: 100%;
+  resize: none;
+  border: 0;
+  outline: 0;
+  padding: 15px;
+  background: #ffffff;
+  color: #1f2937;
+  font-family:
+    "SFMono-Regular",
+    Consolas,
+    "Liberation Mono",
+    Menlo,
+    monospace;
+  font-size: 12px;
+  line-height: 1.65;
+  tab-size: 2;
+}
+
+.adnova-studio-preview-frame {
+  width: 100%;
+  min-height: 380px;
+  flex: 1;
+  border: 0;
+  background: #ffffff;
+}
+
+.adnova-studio-terminal-output {
+  min-height: 380px;
+  flex: 1;
+  overflow-y: auto;
+  padding: 13px;
+  background: #0f172a;
+  color: #cbd5e1;
+  font-family:
+    "SFMono-Regular",
+    Consolas,
+    "Liberation Mono",
+    Menlo,
+    monospace;
+  font-size: 11px;
+  line-height: 1.6;
+}
+
+.adnova-studio-terminal-row {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.adnova-studio-terminal-form {
+  min-height: 39px;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 0 11px;
+  border-top: 1px solid #26344a;
+  background: #0f172a;
+  color: #60a5fa;
+}
+
+.adnova-studio-terminal-form > span {
+  font-family: monospace;
+  font-weight: 800;
+}
+
+.adnova-studio-terminal-form input {
+  min-width: 0;
+  flex: 1;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: #ffffff;
+  font-family:
+    "SFMono-Regular",
+    Consolas,
+    "Liberation Mono",
+    Menlo,
+    monospace;
+  font-size: 11px;
+}
+
+.adnova-studio-terminal-form input::placeholder {
+  color: #64748b;
+}
+
+@media (max-width: 700px) {
+  .adnova-studio-toolbar {
+    flex-wrap: wrap;
+    padding: 7px;
+  }
+
+  .adnova-studio-layout {
+    grid-template-columns: 145px minmax(0, 1fr);
+  }
+
+  .adnova-coding-studio {
+    min-height: 430px;
+  }
+}
+
+/* =========================================================
+   ADNOVA CODING STUDIO V3
+   ========================================================= */
+
+.adnova-coding-reset-button {
+  margin-left: auto;
+  min-height: 34px;
+  border: 1px solid #dbe1e8;
+  border-radius: 9px;
+  padding: 0 11px;
+  background: #ffffff;
+  color: #475569;
+  font: inherit;
+  font-size: 11px;
+  font-weight: 650;
+  cursor: pointer;
+}
+
+.adnova-coding-reset-button:hover {
+  background: #f1f5f9;
+  color: #1f2937;
+}
+
+.adnova-studio-preview-header {
+  flex-wrap: wrap;
+}
+
+.adnova-studio-preview-header button {
+  margin-left: 5px;
+}
+
+.adnova-live-storage-time {
+  margin-top: 9px;
+  color: #94a3b8;
+  font-size: 10px;
+}
+
+body.coding-workspace-active >
+.adnova-coding-terminal {
+  display: none !important;
+}
+
+body.coding-workspace-active
+.new-chat-button {
+  display: none !important;
+}
+
+@media (max-width: 700px) {
+  .adnova-coding-reset-button {
+    min-height: 32px;
+    padding: 0 9px;
+  }
+}

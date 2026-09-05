@@ -1,0 +1,877 @@
+(() => {
+  "use strict";
+
+  const CODE_NAME = "Adnova Code";
+  const CONNECTION_KEY = "adnova_code_connection_v6";
+  const CACHE_META_KEY = "adnova_cache_meta_v6";
+  const LIVE_ID = "adnova-live-storage-v6";
+
+  function qs(selector, root = document) {
+    return root.querySelector(selector);
+  }
+
+  function escapeHtml(value) {
+    return String(value ?? "")
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;")
+      .replace(/'/g, "&#039;");
+  }
+
+  function formatBytes(bytes) {
+    const value = Number(bytes) || 0;
+
+    if (value < 1024) {
+      return `${value} B`;
+    }
+
+    if (value < 1024 ** 2) {
+      return `${(value / 1024).toFixed(1)} KB`;
+    }
+
+    if (value < 1024 ** 3) {
+      return `${(value / 1024 ** 2).toFixed(1)} MB`;
+    }
+
+    return `${(value / 1024 ** 3).toFixed(2)} GB`;
+  }
+
+  function getMeta() {
+    try {
+      const stored = JSON.parse(
+        localStorage.getItem(CACHE_META_KEY) || "null"
+      );
+
+      if (
+        stored &&
+        Number.isFinite(stored.windowStart) &&
+        Date.now() - stored.windowStart < 24 * 60 * 60 * 1000
+      ) {
+        return stored;
+      }
+    } catch {
+      /* reset below */
+    }
+
+    const fresh = {
+      windowStart: Date.now(),
+      resetsUsed: 0
+    };
+
+    try {
+      localStorage.setItem(
+        CACHE_META_KEY,
+        JSON.stringify(fresh)
+      );
+    } catch {
+      /* storage unavailable */
+    }
+
+    return fresh;
+  }
+
+  function saveMeta(meta) {
+    try {
+      localStorage.setItem(
+        CACHE_META_KEY,
+        JSON.stringify(meta)
+      );
+    } catch {
+      /* storage unavailable */
+    }
+  }
+
+  function getLocalStorageBytes() {
+    let total = 0;
+
+    try {
+      for (let i = 0; i < localStorage.length; i += 1) {
+        const key = localStorage.key(i) || "";
+        const value = localStorage.getItem(key) || "";
+
+        if (
+          key.startsWith("adnova_") ||
+          key.startsWith("adnova")
+        ) {
+          total +=
+            (key.length + value.length) * 2;
+        }
+      }
+    } catch {
+      return 0;
+    }
+
+    return total;
+  }
+
+  async function getBrowserStorage() {
+    try {
+      if (
+        navigator.storage &&
+        typeof navigator.storage.estimate === "function"
+      ) {
+        return await navigator.storage.estimate();
+      }
+    } catch {
+      /* unsupported */
+    }
+
+    return {
+      usage: 0,
+      quota: 0
+    };
+  }
+
+  function remainingWindow(meta) {
+    const total =
+      24 * 60 * 60 * 1000;
+
+    const remaining =
+      Math.max(
+        0,
+        total -
+          (Date.now() -
+            Number(meta.windowStart || Date.now()))
+      );
+
+    const hours = Math.floor(
+      remaining / 3600000
+    );
+
+    const minutes = Math.floor(
+      (remaining % 3600000) / 60000
+    );
+
+    return `${hours}h ${minutes}m`;
+  }
+
+  async function clearAdnovaCache() {
+    const meta = getMeta();
+
+    if (
+      Number(meta.resetsUsed || 0) >= 2
+    ) {
+      notify(
+        "Daily cache reset limit reached."
+      );
+      return;
+    }
+
+    try {
+      if (
+        "caches" in window
+      ) {
+        const keys =
+          await caches.keys();
+
+        await Promise.all(
+          keys
+            .filter(
+              key =>
+                /adnova/i.test(key)
+            )
+            .map(
+              key =>
+                caches.delete(key)
+            )
+        );
+      }
+    } catch {
+      /* Cache Storage may be unavailable */
+    }
+
+    meta.resetsUsed =
+      Number(meta.resetsUsed || 0) + 1;
+
+    saveMeta(meta);
+
+    renderLiveStorage();
+
+    notify(
+      "Adnova cache reset."
+    );
+  }
+
+  function notify(message, type = "info") {
+    if (
+      typeof window.showAdnovaNotification ===
+      "function"
+    ) {
+      window.showAdnovaNotification(
+        message,
+        type
+      );
+
+      return;
+    }
+
+    const node =
+      document.createElement("div");
+
+    node.style.cssText = `
+      position:fixed;
+      right:16px;
+      bottom:16px;
+      z-index:15000;
+      background:#17191d;
+      color:#fff;
+      padding:10px 13px;
+      border-radius:9px;
+      font:12px system-ui,sans-serif;
+      box-shadow:0 12px 30px rgba(0,0,0,.15);
+    `;
+
+    node.textContent =
+      message;
+
+    document.body.appendChild(
+      node
+    );
+
+    setTimeout(
+      () => node.remove(),
+      3000
+    );
+  }
+
+  function installLiveStyles() {
+    if (
+      qs("#adnova-live-storage-style-v6")
+    ) {
+      return;
+    }
+
+    const style =
+      document.createElement("style");
+
+    style.id =
+      "adnova-live-storage-style-v6";
+
+    style.textContent = `
+      #${LIVE_ID} {
+        position:fixed;
+        right:16px;
+        bottom:16px;
+        z-index:7100;
+        width:270px;
+        background:#fff;
+        color:#22262c;
+        border:1px solid #e0e3e8;
+        border-radius:11px;
+        box-shadow:
+          0 12px 35px rgba(0,0,0,.10);
+        padding:11px 12px;
+        font:11px/1.45 system-ui,
+          -apple-system,
+          BlinkMacSystemFont,
+          "Segoe UI",
+          sans-serif;
+      }
+
+      .adnova-live-title-v6 {
+        display:flex;
+        align-items:center;
+        justify-content:space-between;
+        font-weight:800;
+        margin-bottom:7px;
+      }
+
+      .adnova-live-dot-v6 {
+        display:inline-block;
+        width:7px;
+        height:7px;
+        border-radius:50%;
+        background:#35a66b;
+        margin-right:6px;
+      }
+
+      .adnova-live-row-v6 {
+        display:flex;
+        justify-content:space-between;
+        gap:10px;
+        color:#666d77;
+        margin-top:4px;
+      }
+
+      .adnova-live-value-v6 {
+        color:#20242a;
+        font-weight:700;
+        text-align:right;
+      }
+
+      .adnova-live-meter-v6 {
+        width:100%;
+        height:4px;
+        border-radius:99px;
+        background:#e8eaed;
+        overflow:hidden;
+        margin-top:5px;
+      }
+
+      .adnova-live-meter-v6 > span {
+        display:block;
+        height:100%;
+        width:0;
+        background:#555b65;
+      }
+
+      .adnova-live-actions-v6 {
+        display:flex;
+        gap:6px;
+        margin-top:9px;
+      }
+
+      .adnova-live-actions-v6 button {
+        flex:1;
+        border:1px solid #dfe2e7;
+        background:#fff;
+        border-radius:7px;
+        padding:6px 7px;
+        cursor:pointer;
+        font:inherit;
+      }
+
+      .adnova-live-actions-v6 button:hover {
+        background:#f5f6f8;
+      }
+
+      #adnova-platform-actions-v6 {
+        position:fixed;
+        left:16px;
+        top:68px;
+        z-index:7200;
+        display:flex;
+        flex-direction:column;
+        gap:6px;
+      }
+
+      .adnova-platform-action-v6 {
+        border:1px solid #dfe2e7;
+        background:#fff;
+        color:#20242a;
+        border-radius:8px;
+        padding:8px 11px;
+        cursor:pointer;
+        font:700 12px system-ui,sans-serif;
+        box-shadow:0 5px 16px rgba(0,0,0,.06);
+      }
+
+      .adnova-platform-action-v6:hover {
+        background:#f5f6f8;
+      }
+    `;
+
+    document.head.appendChild(
+      style
+    );
+  }
+
+  function createLiveStorage() {
+    if (
+      qs(`#${LIVE_ID}`)
+    ) {
+      return;
+    }
+
+    const node =
+      document.createElement("section");
+
+    node.id =
+      LIVE_ID;
+
+    node.innerHTML = `
+      <div class="adnova-live-title-v6">
+        <span>
+          <span class="adnova-live-dot-v6"></span>
+          Live Storage
+        </span>
+
+        <span id="adnova-live-updated-v6">
+          updating
+        </span>
+      </div>
+
+      <div class="adnova-live-row-v6">
+        <span>Browser usage</span>
+        <span
+          id="adnova-browser-usage-v6"
+          class="adnova-live-value-v6"
+        >
+          —
+        </span>
+      </div>
+
+      <div class="adnova-live-meter-v6">
+        <span
+          id="adnova-browser-meter-v6"
+        ></span>
+      </div>
+
+      <div class="adnova-live-row-v6">
+        <span>Adnova data</span>
+        <span
+          id="adnova-adnova-usage-v6"
+          class="adnova-live-value-v6"
+        >
+          —
+        </span>
+      </div>
+
+      <div class="adnova-live-row-v6">
+        <span>Workspace allowance</span>
+        <span
+          class="adnova-live-value-v6"
+        >
+          10 GB
+        </span>
+      </div>
+
+      <div class="adnova-live-row-v6">
+        <span>Cache allowance</span>
+        <span
+          class="adnova-live-value-v6"
+        >
+          5 GB
+        </span>
+      </div>
+
+      <div class="adnova-live-row-v6">
+        <span>Daily resets</span>
+        <span
+          id="adnova-reset-count-v6"
+          class="adnova-live-value-v6"
+        >
+          —
+        </span>
+      </div>
+
+      <div class="adnova-live-row-v6">
+        <span>Window refresh</span>
+        <span
+          id="adnova-window-v6"
+          class="adnova-live-value-v6"
+        >
+          —
+        </span>
+      </div>
+
+      <div class="adnova-live-actions-v6">
+
+        <button
+          id="adnova-reset-cache-v6"
+          type="button"
+        >
+          Reset Cache
+        </button>
+
+      </div>
+    `;
+
+    document.body.appendChild(
+      node
+    );
+
+    qs(
+      "#adnova-reset-cache-v6"
+    ).addEventListener(
+      "click",
+      clearAdnovaCache
+    );
+  }
+
+  async function renderLiveStorage() {
+    createLiveStorage();
+
+    const browser =
+      await getBrowserStorage();
+
+    const usage =
+      Number(
+        browser.usage || 0
+      );
+
+    const quota =
+      Number(
+        browser.quota || 0
+      );
+
+    const tracked =
+      getLocalStorageBytes();
+
+    const meta =
+      getMeta();
+
+    const percentage =
+      quota > 0
+        ? Math.min(
+            100,
+            (usage / quota) * 100
+          )
+        : 0;
+
+    const usageNode =
+      qs("#adnova-browser-usage-v6");
+
+    const trackedNode =
+      qs("#adnova-adnova-usage-v6");
+
+    const meter =
+      qs("#adnova-browser-meter-v6");
+
+    const resetNode =
+      qs("#adnova-reset-count-v6");
+
+    const windowNode =
+      qs("#adnova-window-v6");
+
+    const updated =
+      qs("#adnova-live-updated-v6");
+
+    if (usageNode) {
+      usageNode.textContent =
+        quota > 0
+          ? `${formatBytes(usage)} / ${formatBytes(quota)}`
+          : `${formatBytes(usage)} used`;
+    }
+
+    if (trackedNode) {
+      trackedNode.textContent =
+        formatBytes(tracked);
+    }
+
+    if (meter) {
+      meter.style.width =
+        `${Math.max(
+          percentage,
+          usage > 0 ? 1 : 0
+        )}%`;
+    }
+
+    if (resetNode) {
+      resetNode.textContent =
+        `${Number(
+          meta.resetsUsed || 0
+        )} / 2`;
+    }
+
+    if (windowNode) {
+      windowNode.textContent =
+        remainingWindow(
+          meta
+        );
+    }
+
+    if (updated) {
+      updated.textContent =
+        new Date()
+          .toLocaleTimeString();
+    }
+  }
+
+  function createPlatformActions() {
+    let container =
+      qs(
+        "#adnova-platform-actions-v6"
+      );
+
+    if (
+      !container
+    ) {
+      container =
+        document.createElement(
+          "div"
+        );
+
+      container.id =
+        "adnova-platform-actions-v6";
+
+      document.body.appendChild(
+        container
+      );
+    }
+
+    container.innerHTML = "";
+
+    const existingNewChat =
+      qs(".new-chat-button");
+
+    if (
+      existingNewChat
+    ) {
+      const rect =
+        existingNewChat.getBoundingClientRect();
+
+      container.style.left =
+        `${Math.max(
+          10,
+          rect.left
+        )}px`;
+
+      container.style.top =
+        `${rect.bottom + 8}px`;
+    }
+
+    const codeButton =
+      document.createElement("button");
+
+    codeButton.type =
+      "button";
+
+    codeButton.className =
+      "adnova-platform-action-v6";
+
+    codeButton.textContent =
+      CODE_NAME;
+
+    codeButton.addEventListener(
+      "click",
+      openCodeInNewTab
+    );
+
+    const pluginsButton =
+      document.createElement("button");
+
+    pluginsButton.type =
+      "button";
+
+    pluginsButton.className =
+      "adnova-platform-action-v6";
+
+    pluginsButton.textContent =
+      "Plugins";
+
+    pluginsButton.addEventListener(
+      "click",
+      () => {
+        if (
+          typeof window.adnovaOpenPlugins ===
+          "function"
+        ) {
+          window.adnovaOpenPlugins();
+        }
+      }
+    );
+
+    container.append(
+      codeButton,
+      pluginsButton
+    );
+  }
+
+  function openCodeInNewTab() {
+    const url =
+      `${window.location.origin}/?adnovaCode=1`;
+
+    const tab =
+      window.open(
+        url,
+        "_blank"
+      );
+
+    if (!tab) {
+      notify(
+        "Your browser blocked the Adnova Code tab."
+      );
+    }
+  }
+
+  function bootCodeTab() {
+    const params =
+      new URLSearchParams(
+        window.location.search
+      );
+
+    if (
+      params.get(
+        "adnovaCode"
+      ) !== "1"
+    ) {
+      return;
+    }
+
+    let attempts = 0;
+
+    const timer =
+      setInterval(
+        () => {
+          attempts += 1;
+
+          if (
+            typeof window.setCurrentMode ===
+            "function"
+          ) {
+            clearInterval(timer);
+
+            try {
+              window.setCurrentMode(
+                "coding"
+              );
+            } catch (error) {
+              console.error(
+                "Could not open Adnova Code:",
+                error
+              );
+            }
+
+            setTimeout(
+              forceTerminalOpen,
+              900
+            );
+
+            return;
+          }
+
+          if (
+            attempts > 50
+          ) {
+            clearInterval(timer);
+          }
+        },
+        100
+      );
+  }
+
+  function forceTerminalOpen() {
+    const launcher =
+      qs(
+        "#adnova-v5-terminal-launcher"
+      );
+
+    if (
+      launcher
+    ) {
+      const terminal =
+        qs(
+          "#adnova-v5-terminal"
+        );
+
+      if (
+        !terminal?.classList.contains(
+          "open"
+        )
+      ) {
+        launcher.click();
+      }
+    }
+
+    /*
+     * V5 sometimes briefly renders the
+     * studio before the old workspace hook
+     * runs again. Keep Code authoritative.
+     */
+    document.body.classList.add(
+      "adnova-v5-coding"
+    );
+  }
+
+  function removeOldTopActions() {
+    const old =
+      qs(
+        "#adnova-platform-actions"
+      );
+
+    old?.remove();
+
+    document
+      .querySelectorAll(
+        ".adnova-platform-action"
+      )
+      .forEach(
+        node =>
+          node.remove()
+      );
+  }
+
+  function hideModeSystem() {
+    [
+      "#mode-button",
+      "#mode-menu"
+    ].forEach(
+      selector =>
+        document
+          .querySelector(
+            selector
+          )
+          ?.remove()
+    );
+
+    const composer =
+      qs(
+        ".composer"
+      );
+
+    if (
+      composer
+    ) {
+      delete composer.dataset.mode;
+      composer.classList.remove(
+        "coding-mode"
+      );
+    }
+  }
+
+  async function boot() {
+    installLiveStyles();
+
+    removeOldTopActions();
+
+    hideModeSystem();
+
+    const params =
+      new URLSearchParams(
+        window.location.search
+      );
+
+    if (
+      params.get(
+        "adnovaCode"
+      ) === "1"
+    ) {
+      /*
+       * Code tab:
+       * no normal-page action buttons,
+       * no storage monitor covering the
+       * workspace, and terminal opens itself.
+       */
+
+      bootCodeTab();
+
+      return;
+    }
+
+    /*
+     * Normal Adnova page.
+     */
+    createPlatformActions();
+    createLiveStorage();
+
+    await renderLiveStorage();
+
+    if (
+      !window.__adnovaStorageTimerV6
+    ) {
+      window.__adnovaStorageTimerV6 =
+        setInterval(
+          renderLiveStorage,
+          1000
+        );
+    }
+
+    window.addEventListener(
+      "resize",
+      createPlatformActions
+    );
+  }
+
+  window.adnovaCodeV6 = {
+    openCodeInNewTab,
+    clearAdnovaCache,
+    renderLiveStorage
+  };
+
+  setTimeout(
+    boot,
+    0
+  );
+})();

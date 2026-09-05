@@ -1,0 +1,4234 @@
+(() => {
+  "use strict";
+
+  const ROOT_ID = "adnova-coding-studio-v5";
+  const PROJECTS_KEY = "adnova_projects_v5";
+  const DRAFT_KEY = "adnova_active_coding_project_v5";
+  const NPM_KEY = "adnova_npm_state_v5";
+  const MAX_PROJECTS = 5;
+  const MAX_BACKUPS = 10;
+
+  let studio = null;
+  let terminalOpen = false;
+  let previewUrl = null;
+
+  const defaultFiles = () => ({
+    "/index.html": `<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Adnova Project</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <main>
+    <h1>Hello from Adnova</h1>
+    <p>Start building something.</p>
+  </main>
+
+  <script src="script.js"></script>
+</body>
+</html>`,
+
+    "/style.css": `body {
+  margin: 0;
+  font-family: system-ui, sans-serif;
+  background: #f5f7fa;
+  color: #17191d;
+}
+
+main {
+  max-width: 900px;
+  margin: 80px auto;
+  padding: 32px;
+}`,
+
+    "/script.js": `console.log("Adnova project started");`,
+
+    "/README.md": `# Adnova Project
+
+Built in Adnova Coding.
+`
+  });
+
+  function json(key, fallback) {
+    try {
+      const parsed =
+        JSON.parse(
+          localStorage.getItem(key) || "null"
+        );
+
+      return parsed ?? fallback;
+    } catch {
+      return fallback;
+    }
+  }
+
+  function clone(value) {
+    try {
+      return structuredClone(value);
+    } catch {
+      return JSON.parse(
+        JSON.stringify(value)
+      );
+    }
+  }
+
+  function normalizePath(path) {
+    let value =
+      String(path || "").trim();
+
+    if (!value) {
+      return "/";
+    }
+
+    value =
+      value
+        .replace(/\\/g, "/")
+        .replace(/^\/+/, "/");
+
+    if (!value.startsWith("/")) {
+      value = `/${value}`;
+    }
+
+    const parts = [];
+
+    value.split("/").forEach(part => {
+      if (!part || part === ".") {
+        return;
+      }
+
+      if (part === "..") {
+        parts.pop();
+        return;
+      }
+
+      parts.push(part);
+    });
+
+    return `/${parts.join("/")}`;
+  }
+
+  function parentPath(path) {
+    const value =
+      normalizePath(path);
+
+    if (value === "/") {
+      return "/";
+    }
+
+    const index =
+      value.lastIndexOf("/");
+
+    return index <= 0
+      ? "/"
+      : value.slice(0, index);
+  }
+
+  function baseName(path) {
+    const value =
+      normalizePath(path);
+
+    if (value === "/") {
+      return "/";
+    }
+
+    return value.slice(
+      value.lastIndexOf("/") + 1
+    );
+  }
+
+  function escapeHtml(value) {
+    return String(value ?? "")
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;")
+      .replace(/'/g, "&#039;");
+  }
+
+  function projectTemplate(name = "Untitled") {
+    return {
+      id: null,
+      name,
+      updatedAt: Date.now(),
+      cwd: "/",
+      currentFile: "/index.html",
+      files: defaultFiles(),
+      folders: [],
+      backups: [],
+      snapshots: [],
+      ai: []
+    };
+  }
+
+  function cleanProject(project) {
+    const source =
+      project &&
+      typeof project === "object"
+        ? project
+        : {};
+
+    return {
+      id:
+        source.id ||
+        null,
+
+      name:
+        String(
+          source.name ||
+          "Untitled"
+        ).slice(0, 80),
+
+      updatedAt:
+        Number(
+          source.updatedAt
+        ) ||
+        Date.now(),
+
+      cwd:
+        normalizePath(
+          source.cwd || "/"
+        ),
+
+      currentFile:
+        normalizePath(
+          source.currentFile ||
+          "/index.html"
+        ),
+
+      files:
+        source.files &&
+        typeof source.files === "object"
+          ? source.files
+          : defaultFiles(),
+
+      folders:
+        Array.isArray(source.folders)
+          ? [
+              ...new Set(
+                source.folders.map(
+                  normalizePath
+                )
+              )
+            ]
+          : [],
+
+      backups:
+        Array.isArray(source.backups)
+          ? source.backups.slice(
+              0,
+              MAX_BACKUPS
+            )
+          : [],
+
+      snapshots:
+        Array.isArray(source.snapshots)
+          ? source.snapshots.slice(
+              0,
+              10
+            )
+          : [],
+
+      ai:
+        Array.isArray(source.ai)
+          ? source.ai.slice(-30)
+          : []
+    };
+  }
+
+  function loadDraft() {
+    return cleanProject(
+      json(
+        DRAFT_KEY,
+        projectTemplate()
+      )
+    );
+  }
+
+  function saveDraft() {
+    if (!studio?.project) {
+      return;
+    }
+
+    studio.project.updatedAt =
+      Date.now();
+
+    try {
+      localStorage.setItem(
+        DRAFT_KEY,
+        JSON.stringify(
+          studio.project
+        )
+      );
+    } catch (error) {
+      console.error(
+        "Coding draft save failed:",
+        error
+      );
+
+      toast(
+        "Could not save the coding draft.",
+        "error"
+      );
+    }
+  }
+
+  function loadProjects() {
+    const projects =
+      json(
+        PROJECTS_KEY,
+        []
+      );
+
+    return Array.isArray(projects)
+      ? projects
+          .map(cleanProject)
+          .slice(0, MAX_PROJECTS)
+      : [];
+  }
+
+  function saveProjects(projects) {
+    try {
+      localStorage.setItem(
+        PROJECTS_KEY,
+        JSON.stringify(
+          projects.slice(
+            0,
+            MAX_PROJECTS
+          )
+        )
+      );
+    } catch (error) {
+      console.error(error);
+
+      toast(
+        "Projects could not be saved.",
+        "error"
+      );
+    }
+  }
+
+  function toast(message, type = "info") {
+    if (
+      typeof window.showAdnovaNotification ===
+      "function"
+    ) {
+      window.showAdnovaNotification(
+        message,
+        type
+      );
+
+      return;
+    }
+
+    const node =
+      document.createElement("div");
+
+    node.className =
+      `adnova-v5-toast ${
+        type
+      }`;
+
+    node.textContent =
+      message;
+
+    document.body.appendChild(
+      node
+    );
+
+    setTimeout(
+      () => node.remove(),
+      3000
+    );
+  }
+
+  function installStyles() {
+    if (
+      document.getElementById(
+        "adnova-v5-style"
+      )
+    ) {
+      return;
+    }
+
+    const style =
+      document.createElement("style");
+
+    style.id =
+      "adnova-v5-style";
+
+    style.textContent = `
+      #${ROOT_ID} {
+        position:fixed;
+        inset:0;
+        z-index:9990;
+        background:#fff;
+        color:#17191d;
+        display:none;
+        flex-direction:column;
+        font-family:
+          system-ui,
+          -apple-system,
+          BlinkMacSystemFont,
+          "Segoe UI",
+          sans-serif;
+      }
+
+      body.adnova-v5-coding
+      #${ROOT_ID} {
+        display:flex;
+      }
+
+      #${ROOT_ID} * {
+        box-sizing:border-box;
+      }
+
+      body.adnova-v5-coding
+      .new-chat-button,
+      body.adnova-v5-coding
+      .adnova-coding-studio,
+      body.adnova-v5-coding
+      .adnova-coding-terminal,
+      body.adnova-v5-coding
+      #coding-workspace {
+        display:none!important;
+      }
+
+      .adnova-v5-header {
+        height:58px;
+        border-bottom:1px solid #e7e9ed;
+        display:flex;
+        align-items:center;
+        gap:9px;
+        padding:0 15px;
+        background:#fff;
+      }
+
+      .adnova-v5-title {
+        font-weight:800;
+        letter-spacing:-.02em;
+      }
+
+      .adnova-v5-project {
+        min-width:180px;
+        max-width:280px;
+        background:#f6f7f9;
+        border:1px solid #e3e5e9;
+        border-radius:8px;
+        padding:7px 10px;
+        font-weight:650;
+        overflow:hidden;
+        text-overflow:ellipsis;
+        white-space:nowrap;
+      }
+
+      .adnova-v5-spacer {
+        flex:1;
+      }
+
+      .adnova-v5-btn {
+        border:1px solid #dfe2e7;
+        background:#fff;
+        color:#1d2025;
+        border-radius:8px;
+        padding:8px 11px;
+        font:inherit;
+        cursor:pointer;
+      }
+
+      .adnova-v5-btn:hover {
+        background:#f5f6f8;
+      }
+
+      .adnova-v5-btn.primary {
+        background:#17191d;
+        border-color:#17191d;
+        color:#fff;
+      }
+
+      .adnova-v5-body {
+        display:grid;
+        grid-template-columns:245px minmax(0,1fr);
+        min-height:0;
+        flex:1;
+      }
+
+      .adnova-v5-sidebar {
+        border-right:1px solid #e7e9ed;
+        background:#fbfbfc;
+        display:flex;
+        flex-direction:column;
+        min-width:0;
+      }
+
+      .adnova-v5-explorer-header {
+        height:45px;
+        display:flex;
+        align-items:center;
+        justify-content:space-between;
+        padding:0 11px;
+        border-bottom:1px solid #e7e9ed;
+        font-size:12px;
+        font-weight:800;
+        letter-spacing:.08em;
+        color:#69707a;
+      }
+
+      .adnova-v5-file-buttons {
+        display:flex;
+        gap:5px;
+      }
+
+      .adnova-v5-mini {
+        width:28px;
+        height:28px;
+        padding:0;
+      }
+
+      .adnova-v5-tree {
+        overflow:auto;
+        flex:1;
+        min-height:0;
+        padding:8px;
+      }
+
+      .adnova-v5-tree-row {
+        width:100%;
+        border:0;
+        background:transparent;
+        border-radius:7px;
+        display:flex;
+        gap:7px;
+        align-items:center;
+        text-align:left;
+        padding:7px 8px;
+        cursor:pointer;
+        color:#2a2d33;
+      }
+
+      .adnova-v5-tree-row:hover {
+        background:#f0f2f5;
+      }
+
+      .adnova-v5-tree-row.active {
+        background:#e9edf5;
+        font-weight:750;
+      }
+
+      .adnova-v5-tree-row.folder {
+        color:#626973;
+        font-weight:700;
+      }
+
+      .adnova-v5-storage {
+        border-top:1px solid #e7e9ed;
+        padding:9px 11px;
+        font-size:11px;
+        line-height:1.45;
+        color:#69707a;
+      }
+
+      .adnova-v5-main {
+        min-width:0;
+        min-height:0;
+        display:flex;
+        flex-direction:column;
+      }
+
+      .adnova-v5-tabs {
+        height:46px;
+        border-bottom:1px solid #e7e9ed;
+        display:flex;
+        align-items:center;
+        gap:4px;
+        padding:0 8px;
+      }
+
+      .adnova-v5-tab {
+        border:0;
+        background:transparent;
+        border-radius:7px;
+        padding:7px 12px;
+        font:inherit;
+        color:#646b76;
+        cursor:pointer;
+        font-weight:700;
+      }
+
+      .adnova-v5-tab.active {
+        background:#eef0f4;
+        color:#17191d;
+      }
+
+      .adnova-v5-view {
+        min-height:0;
+        flex:1;
+        display:none;
+      }
+
+      .adnova-v5-view.active {
+        display:flex;
+      }
+
+      .adnova-v5-build {
+        flex-direction:column;
+      }
+
+      .adnova-v5-editor-header {
+        height:43px;
+        display:flex;
+        align-items:center;
+        gap:10px;
+        padding:0 10px;
+        border-bottom:1px solid #e7e9ed;
+        background:#fbfbfc;
+      }
+
+      .adnova-v5-path {
+        font:
+          12px
+          ui-monospace,
+          SFMono-Regular,
+          Menlo,
+          monospace;
+        color:#646a74;
+        flex:1;
+      }
+
+      .adnova-v5-editor-layout {
+        display:grid;
+        grid-template-columns:minmax(0,1fr);
+        min-height:0;
+        flex:1;
+      }
+
+      .adnova-v5-editor {
+        min-width:0;
+        min-height:0;
+        position:relative;
+        display:flex;
+        flex-direction:column;
+      }
+
+      .adnova-v5-code {
+        flex:1;
+        min-height:0;
+        width:100%;
+        border:0;
+        outline:none;
+        resize:none;
+        padding:18px 20px;
+        background:#fff;
+        color:#1c2025;
+        font:
+          13px/1.6
+          ui-monospace,
+          SFMono-Regular,
+          Menlo,
+          Monaco,
+          Consolas,
+          monospace;
+        tab-size:2;
+      }
+
+      .adnova-v5-code.text-file {
+        background:#f6f7f9;
+        color:#5e646d;
+      }
+
+      .adnova-v5-code.invalid {
+        box-shadow:
+          inset 3px 0 0 #dc3345;
+      }
+
+      .adnova-v5-issue {
+        display:none;
+        align-items:center;
+        gap:9px;
+        padding:9px 12px;
+        background:#fff0f1;
+        border-top:1px solid #f4c6cb;
+        color:#9f2532;
+        font-size:12px;
+      }
+
+      .adnova-v5-issue.show {
+        display:flex;
+      }
+
+      .adnova-v5-issue-text {
+        flex:1;
+      }
+
+      .adnova-v5-ai-panel {
+        position:fixed;
+        top:58px;
+        right:0;
+        bottom:0;
+        width:min(390px,92vw);
+        background:#fff;
+        border-left:1px solid #e4e6eb;
+        box-shadow:-15px 0 40px rgba(0,0,0,.08);
+        display:flex;
+        flex-direction:column;
+        transform:translateX(102%);
+        transition:transform .2s ease;
+        z-index:9994;
+      }
+
+      .adnova-v5-ai-panel.open {
+        transform:translateX(0);
+      }
+
+      .adnova-v5-ai-header {
+        height:50px;
+        padding:0 12px;
+        display:flex;
+        align-items:center;
+        justify-content:space-between;
+        border-bottom:1px solid #e6e8ec;
+      }
+
+      .adnova-v5-ai-header strong {
+        font-size:13px;
+      }
+
+      .adnova-v5-ai-messages {
+        flex:1;
+        min-height:0;
+        overflow:auto;
+        padding:12px;
+      }
+
+      .adnova-v5-ai-message {
+        border:1px solid #e1e4e9;
+        background:#fff;
+        border-radius:9px;
+        padding:10px;
+        margin-bottom:8px;
+        font-size:12px;
+        line-height:1.5;
+        white-space:pre-wrap;
+        word-break:break-word;
+      }
+
+      .adnova-v5-ai-message.user {
+        background:#f2f4f7;
+      }
+
+      .adnova-v5-ai-composer {
+        border-top:1px solid #e6e8ec;
+        padding:10px;
+        display:flex;
+        gap:7px;
+        align-items:flex-end;
+      }
+
+      .adnova-v5-ai-input {
+        flex:1;
+        min-height:44px;
+        max-height:130px;
+        resize:vertical;
+        border:1px solid #dfe2e7;
+        border-radius:9px;
+        padding:10px;
+        outline:none;
+        font:13px/1.4 inherit;
+      }
+
+      .adnova-v5-send {
+        width:42px;
+        height:42px;
+        padding:0;
+        border-radius:50%;
+        background:#17191d;
+        color:#fff;
+        border:0;
+        cursor:pointer;
+        font-size:18px;
+      }
+
+      .adnova-v5-send:disabled {
+        opacity:.45;
+        cursor:not-allowed;
+      }
+
+      .adnova-v5-preview {
+        flex-direction:column;
+      }
+
+      .adnova-v5-preview-toolbar {
+        height:45px;
+        display:flex;
+        align-items:center;
+        gap:7px;
+        padding:0 9px;
+        border-bottom:1px solid #e7e9ed;
+      }
+
+      .adnova-v5-preview-frame {
+        flex:1;
+        width:100%;
+        min-height:0;
+        border:0;
+        background:#fff;
+      }
+
+      .adnova-v5-terminal-drawer {
+        position:fixed;
+        left:50%;
+        bottom:14px;
+        width:min(760px,calc(100vw - 28px));
+        height:330px;
+        transform:
+          translate(-50%,calc(100% + 24px));
+        transition:
+          transform .2s ease;
+        background:#fff;
+        border:1px solid #dadde3;
+        border-radius:13px;
+        box-shadow:
+          0 24px 60px rgba(0,0,0,.18);
+        z-index:9995;
+        overflow:hidden;
+        display:flex;
+        flex-direction:column;
+      }
+
+      .adnova-v5-terminal-drawer.open {
+        transform:
+          translate(-50%,0);
+      }
+
+      .adnova-v5-terminal-header {
+        height:45px;
+        flex:none;
+        display:flex;
+        align-items:center;
+        gap:9px;
+        padding:0 11px;
+        border-bottom:1px solid #e2e5e9;
+        background:#fff;
+      }
+
+      .adnova-v5-terminal-title {
+        font-weight:800;
+        font-size:12px;
+      }
+
+      .adnova-v5-terminal-status {
+        font-size:11px;
+        color:#737983;
+      }
+
+      .adnova-v5-terminal-log {
+        flex:1;
+        min-height:0;
+        overflow:auto;
+        padding:13px;
+        background:#fff;
+        color:#252a31;
+        font:
+          12px/1.55
+          ui-monospace,
+          SFMono-Regular,
+          Menlo,
+          monospace;
+        white-space:pre-wrap;
+      }
+
+      .adnova-v5-terminal-input-row {
+        height:46px;
+        display:flex;
+        align-items:center;
+        gap:8px;
+        padding:0 11px;
+        border-top:1px solid #e1e4e8;
+        background:#fafbfc;
+      }
+
+      .adnova-v5-terminal-input {
+        flex:1;
+        border:0;
+        outline:0;
+        background:transparent;
+        color:#20242a;
+        font:
+          12px
+          ui-monospace,
+          SFMono-Regular,
+          Menlo,
+          monospace;
+      }
+
+      .adnova-v5-terminal-launcher {
+        position:fixed;
+        left:50%;
+        bottom:12px;
+        transform:translateX(-50%);
+        z-index:9993;
+        min-width:130px;
+        height:40px;
+        border:1px solid #d5d8de;
+        background:#fff;
+        color:#202329;
+        border-radius:10px;
+        box-shadow:0 8px 24px rgba(0,0,0,.09);
+        font:700 12px inherit;
+        cursor:pointer;
+      }
+
+      .adnova-v5-terminal-launcher:hover {
+        background:#f6f7f9;
+      }
+
+      .adnova-v5-projects {
+        padding:14px;
+        font-size:12px;
+      }
+
+      .adnova-v5-project-row {
+        border:1px solid #e0e3e8;
+        border-radius:8px;
+        padding:10px;
+        margin-bottom:7px;
+        background:#fff;
+        cursor:pointer;
+      }
+
+      .adnova-v5-project-row:hover {
+        background:#f7f8fa;
+      }
+
+      .adnova-v5-run-dialog {
+        position:fixed;
+        inset:0;
+        z-index:9998;
+        background:rgba(20,22,26,.25);
+        display:flex;
+        align-items:center;
+        justify-content:center;
+      }
+
+      .adnova-v5-run-card {
+        width:min(430px,calc(100vw - 32px));
+        background:#fff;
+        border-radius:12px;
+        box-shadow:
+          0 30px 70px rgba(0,0,0,.2);
+        padding:16px;
+      }
+
+      .adnova-v5-run-card h3 {
+        margin:0 0 7px;
+      }
+
+      .adnova-v5-run-card p {
+        margin:0;
+        color:#636a74;
+        font-size:13px;
+        line-height:1.5;
+      }
+
+      .adnova-v5-run-actions {
+        display:flex;
+        justify-content:flex-end;
+        gap:8px;
+        margin-top:14px;
+      }
+
+      .adnova-v5-toast {
+        position:fixed;
+        right:16px;
+        bottom:16px;
+        z-index:10010;
+        background:#17191d;
+        color:#fff;
+        padding:11px 13px;
+        border-radius:9px;
+        box-shadow:0 12px 30px rgba(0,0,0,.15);
+        font-size:12px;
+      }
+
+      .adnova-v5-toast.error {
+        background:#a61d2a;
+      }
+
+      @media (max-width:900px) {
+        .adnova-v5-body {
+          grid-template-columns:200px minmax(0,1fr);
+        }
+
+        .adnova-v5-ai-panel {
+          width:100%;
+        }
+      }
+    `;
+
+    document.head.appendChild(
+      style
+    );
+  }
+
+  function createRoot() {
+    let root =
+      document.getElementById(
+        ROOT_ID
+      );
+
+    if (root) {
+      return root;
+    }
+
+    root =
+      document.createElement(
+        "section"
+      );
+
+    root.id =
+      ROOT_ID;
+
+    root.innerHTML = `
+      <header class="adnova-v5-header">
+
+        <div class="adnova-v5-title">
+          Adnova Coding
+        </div>
+
+        <div
+          id="adnova-v5-project-name"
+          class="adnova-v5-project"
+        >
+          Untitled
+        </div>
+
+        <div class="adnova-v5-spacer"></div>
+
+        <button
+          class="adnova-v5-btn"
+          id="adnova-v5-new-chat"
+        >
+          New Chat
+        </button>
+
+        <button
+          class="adnova-v5-btn"
+          id="adnova-v5-save-project"
+        >
+          Save Project
+        </button>
+
+        <button
+          class="adnova-v5-btn"
+          id="adnova-v5-ai-toggle"
+        >
+          Coding AI
+        </button>
+
+        <button
+          class="adnova-v5-btn"
+          id="adnova-v5-back"
+        >
+          Back to Chat
+        </button>
+
+      </header>
+
+      <div class="adnova-v5-body">
+
+        <aside class="adnova-v5-sidebar">
+
+          <div class="adnova-v5-explorer-header">
+
+            <span>EXPLORER</span>
+
+            <span class="adnova-v5-file-buttons">
+
+              <button
+                class="adnova-v5-btn adnova-v5-mini"
+                id="adnova-v5-new-file"
+                title="New file"
+              >
+                +
+              </button>
+
+              <button
+                class="adnova-v5-btn adnova-v5-mini"
+                id="adnova-v5-new-folder"
+                title="New folder"
+              >
+                □
+              </button>
+
+            </span>
+
+          </div>
+
+          <div
+            class="adnova-v5-tree"
+            id="adnova-v5-tree"
+          ></div>
+
+          <div
+            class="adnova-v5-storage"
+            id="adnova-v5-storage"
+          ></div>
+
+        </aside>
+
+        <main class="adnova-v5-main">
+
+          <div class="adnova-v5-tabs">
+
+            <button
+              class="adnova-v5-tab active"
+              data-pane="build"
+            >
+              Build
+            </button>
+
+            <button
+              class="adnova-v5-tab"
+              data-pane="preview"
+            >
+              Preview
+            </button>
+
+          </div>
+
+          <section
+            class="adnova-v5-view adnova-v5-build active"
+            data-view="build"
+          >
+
+            <div class="adnova-v5-editor-header">
+
+              <span
+                class="adnova-v5-path"
+                id="adnova-v5-path"
+              >
+                /index.html
+              </span>
+
+              <button
+                class="adnova-v5-btn"
+                id="adnova-v5-save-file"
+              >
+                Save
+              </button>
+
+            </div>
+
+            <div class="adnova-v5-editor-layout">
+
+              <div class="adnova-v5-editor">
+
+                <textarea
+                  id="adnova-v5-code"
+                  class="adnova-v5-code"
+                  spellcheck="false"
+                ></textarea>
+
+                <div
+                  id="adnova-v5-issue"
+                  class="adnova-v5-issue"
+                >
+
+                  <strong>!</strong>
+
+                  <span
+                    id="adnova-v5-issue-text"
+                    class="adnova-v5-issue-text"
+                  ></span>
+
+                  <button
+                    class="adnova-v5-btn"
+                    id="adnova-v5-debug"
+                  >
+                    Ask AI to debug
+                  </button>
+
+                </div>
+
+              </div>
+
+            </div>
+
+          </section>
+
+          <section
+            class="adnova-v5-view adnova-v5-preview"
+            data-view="preview"
+          >
+
+            <div class="adnova-v5-preview-toolbar">
+
+              <button
+                class="adnova-v5-btn"
+                id="adnova-v5-refresh"
+              >
+                Refresh
+              </button>
+
+              <button
+                class="adnova-v5-btn"
+                id="adnova-v5-new-tab"
+              >
+                Open New Tab
+              </button>
+
+              <button
+                class="adnova-v5-btn"
+                id="adnova-v5-snapshot"
+              >
+                Snapshot
+              </button>
+
+              <button
+                class="adnova-v5-btn"
+                id="adnova-v5-restore"
+              >
+                Restore
+              </button>
+
+              <div class="adnova-v5-spacer"></div>
+
+              <span
+                id="adnova-v5-preview-status"
+                style="font-size:11px;color:#737983;"
+              >
+                Ready
+              </span>
+
+            </div>
+
+            <iframe
+              id="adnova-v5-preview-frame"
+              class="adnova-v5-preview-frame"
+              sandbox="allow-scripts allow-forms allow-modals allow-popups"
+            ></iframe>
+
+          </section>
+
+        </main>
+
+      </div>
+
+      <aside
+        class="adnova-v5-ai-panel"
+        id="adnova-v5-ai-panel"
+      >
+
+        <div class="adnova-v5-ai-header">
+
+          <strong>Coding AI</strong>
+
+          <button
+            class="adnova-v5-btn"
+            id="adnova-v5-close-ai"
+          >
+            Close
+          </button>
+
+        </div>
+
+        <div
+          class="adnova-v5-ai-messages"
+          id="adnova-v5-ai-messages"
+        ></div>
+
+        <div class="adnova-v5-ai-composer">
+
+          <textarea
+            id="adnova-v5-ai-input"
+            class="adnova-v5-ai-input"
+            placeholder="Build, edit, debug, add a file, make a folder, or change the project..."
+          ></textarea>
+
+          <button
+            class="adnova-v5-send"
+            id="adnova-v5-ai-send"
+            title="Send"
+            aria-label="Send"
+          >
+            ↑
+          </button>
+
+        </div>
+
+      </aside>
+
+      <button
+        id="adnova-v5-terminal-launcher"
+        class="adnova-v5-terminal-launcher"
+      >
+        Terminal
+      </button>
+
+      <section
+        id="adnova-v5-terminal"
+        class="adnova-v5-terminal-drawer"
+      >
+
+        <div class="adnova-v5-terminal-header">
+
+          <span class="adnova-v5-terminal-title">
+            Terminal
+          </span>
+
+          <span
+            class="adnova-v5-terminal-status"
+            id="adnova-v5-terminal-status"
+          >
+            / 
+          </span>
+
+          <div class="adnova-v5-spacer"></div>
+
+          <button
+            class="adnova-v5-btn adnova-v5-mini"
+            id="adnova-v5-terminal-close"
+          >
+            ×
+          </button>
+
+        </div>
+
+        <div
+          id="adnova-v5-terminal-log"
+          class="adnova-v5-terminal-log"
+        ></div>
+
+        <div class="adnova-v5-terminal-input-row">
+
+          <span
+            id="adnova-v5-terminal-prompt"
+          >
+            $
+          </span>
+
+          <input
+            id="adnova-v5-terminal-input"
+            class="adnova-v5-terminal-input"
+            autocomplete="off"
+            spellcheck="false"
+          />
+
+        </div>
+
+      </section>
+    `;
+
+    document.body.appendChild(
+      root
+    );
+
+    bindEvents(root);
+
+    return root;
+  }
+
+  function bindEvents(root) {
+
+    root
+      .querySelectorAll(
+        ".adnova-v5-tab"
+      )
+      .forEach(tab => {
+        tab.addEventListener(
+          "click",
+          () =>
+            switchPane(
+              tab.dataset.pane
+            )
+        );
+      });
+
+    root
+      .querySelector(
+        "#adnova-v5-new-chat"
+      )
+      .addEventListener(
+        "click",
+        newCodingChat
+      );
+
+    root
+      .querySelector(
+        "#adnova-v5-save-project"
+      )
+      .addEventListener(
+        "click",
+        saveProject
+      );
+
+    root
+      .querySelector(
+        "#adnova-v5-back"
+      )
+      .addEventListener(
+        "click",
+        backToChat
+      );
+
+    root
+      .querySelector(
+        "#adnova-v5-new-file"
+      )
+      .addEventListener(
+        "click",
+        newFile
+      );
+
+    root
+      .querySelector(
+        "#adnova-v5-new-folder"
+      )
+      .addEventListener(
+        "click",
+        newFolder
+      );
+
+    root
+      .querySelector(
+        "#adnova-v5-save-file"
+      )
+      .addEventListener(
+        "click",
+        saveEditor
+      );
+
+    root
+      .querySelector(
+        "#adnova-v5-refresh"
+      )
+      .addEventListener(
+        "click",
+        refreshPreview
+      );
+
+    root
+      .querySelector(
+        "#adnova-v5-new-tab"
+      )
+      .addEventListener(
+        "click",
+        openNewTab
+      );
+
+    root
+      .querySelector(
+        "#adnova-v5-snapshot"
+      )
+      .addEventListener(
+        "click",
+        createSnapshot
+      );
+
+    root
+      .querySelector(
+        "#adnova-v5-restore"
+      )
+      .addEventListener(
+        "click",
+        restoreSnapshot
+      );
+
+    root
+      .querySelector(
+        "#adnova-v5-ai-toggle"
+      )
+      .addEventListener(
+        "click",
+        () =>
+          toggleAi(true)
+      );
+
+    root
+      .querySelector(
+        "#adnova-v5-close-ai"
+      )
+      .addEventListener(
+        "click",
+        () =>
+          toggleAi(false)
+      );
+
+    root
+      .querySelector(
+        "#adnova-v5-ai-send"
+      )
+      .addEventListener(
+        "click",
+        askCodingAi
+      );
+
+    root
+      .querySelector(
+        "#adnova-v5-debug"
+      )
+      .addEventListener(
+        "click",
+        debugCurrentFile
+      );
+
+    root
+      .querySelector(
+        "#adnova-v5-terminal-launcher"
+      )
+      .addEventListener(
+        "click",
+        () =>
+          toggleTerminal()
+      );
+
+    root
+      .querySelector(
+        "#adnova-v5-terminal-close"
+      )
+      .addEventListener(
+        "click",
+        () =>
+          toggleTerminal(false)
+      );
+
+    root
+      .querySelector(
+        "#adnova-v5-terminal-input"
+      )
+      .addEventListener(
+        "keydown",
+        terminalKeydown
+      );
+
+    root
+      .querySelector(
+        "#adnova-v5-code"
+      )
+      .addEventListener(
+        "input",
+        () => {
+          const path =
+            studio.project.currentFile;
+
+          studio.project.files[path] =
+            root.querySelector(
+              "#adnova-v5-code"
+            ).value;
+
+          validateCurrentFile();
+
+          saveDraft();
+        }
+      );
+  }
+
+  function mount() {
+    installStyles();
+
+    document.body.classList.add(
+      "adnova-v5-coding"
+    );
+
+    document
+      .querySelectorAll(
+        ".adnova-coding-terminal,"
+        + ".adnova-coding-studio,"
+        + "#coding-workspace,"
+        + "#adnova-coding-studio"
+      )
+      .forEach(
+        node =>
+          node.style.display =
+            "none"
+      );
+
+    document
+      .querySelectorAll(
+        ".new-chat-button"
+      )
+      .forEach(
+        node =>
+          node.style.setProperty(
+            "display",
+            "none",
+            "important"
+          )
+      );
+
+    if (!studio) {
+      studio = {
+        project:
+          loadDraft()
+      };
+    }
+
+    studio.project =
+      cleanProject(
+        studio.project
+      );
+
+    createRoot();
+
+    renderAll();
+  }
+
+  function unmount() {
+    document.body.classList.remove(
+      "adnova-v5-coding"
+    );
+
+    document
+      .querySelectorAll(
+        ".new-chat-button"
+      )
+      .forEach(
+        node =>
+          node.style.removeProperty(
+            "display"
+          )
+      );
+
+    toggleAi(false);
+    toggleTerminal(false);
+  }
+
+  function sync() {
+    const composer =
+      document.querySelector(
+        ".composer"
+      );
+
+    const mode =
+      composer?.dataset?.mode;
+
+    if (
+      mode === "coding"
+    ) {
+      mount();
+    } else {
+      unmount();
+    }
+  }
+
+  function renderAll() {
+    const root =
+      document.getElementById(
+        ROOT_ID
+      );
+
+    if (!root) {
+      return;
+    }
+
+    root.querySelector(
+      "#adnova-v5-project-name"
+    ).textContent =
+      studio.project.name;
+
+    renderTree();
+
+    openFile(
+      studio.project.currentFile ||
+      "/index.html"
+    );
+
+    renderAi();
+
+    updateTerminalPrompt();
+
+    validateCurrentFile();
+
+    updateStorage();
+
+    refreshPreview();
+  }
+
+  function switchPane(name) {
+    const root =
+      document.getElementById(
+        ROOT_ID
+      );
+
+    if (!root) {
+      return;
+    }
+
+    root
+      .querySelectorAll(
+        ".adnova-v5-tab"
+      )
+      .forEach(
+        tab =>
+          tab.classList.toggle(
+            "active",
+            tab.dataset.pane ===
+              name
+          )
+      );
+
+    root
+      .querySelectorAll(
+        ".adnova-v5-view"
+      )
+      .forEach(
+        view =>
+          view.classList.toggle(
+            "active",
+            view.dataset.view ===
+              name
+          )
+      );
+
+    if (
+      name === "preview"
+    ) {
+      refreshPreview();
+    }
+  }
+
+  function getFiles() {
+    return Object.keys(
+      studio.project.files
+    ).sort();
+  }
+
+  function renderTree() {
+    const tree =
+      document.querySelector(
+        "#adnova-v5-tree"
+      );
+
+    if (!tree) {
+      return;
+    }
+
+    const folders =
+      new Set(
+        (
+          studio.project.folders ||
+          []
+        ).map(
+          normalizePath
+        )
+      );
+
+    getFiles().forEach(
+      file => {
+        let parent =
+          parentPath(file);
+
+        while (
+          parent !== "/"
+        ) {
+          folders.add(parent);
+          parent =
+            parentPath(parent);
+        }
+      }
+    );
+
+    tree.innerHTML = "";
+
+    [...folders]
+      .sort()
+      .forEach(
+        folder => {
+          const row =
+            document.createElement(
+              "button"
+            );
+
+          row.className =
+            "adnova-v5-tree-row folder";
+
+          row.innerHTML =
+            `<span>▸</span><span>${escapeHtml(
+              baseName(folder)
+            )}</span>`;
+
+          row.addEventListener(
+            "click",
+            () =>
+              terminalPrint(
+                `${folder}\n`
+              )
+          );
+
+          tree.appendChild(
+            row
+          );
+        }
+      );
+
+    getFiles().forEach(
+      file => {
+        const row =
+          document.createElement(
+            "button"
+          );
+
+        row.className =
+          `adnova-v5-tree-row ${
+            file ===
+            studio.project.currentFile
+              ? "active"
+              : ""
+          }`;
+
+        const extension =
+          baseName(file)
+            .split(".")
+            .pop()
+            .toLowerCase();
+
+        let icon = "•";
+
+        if (
+          extension === "html"
+        ) {
+          icon = "◈";
+        } else if (
+          extension === "css"
+        ) {
+          icon = "◇";
+        } else if (
+          [
+            "js",
+            "ts"
+          ].includes(
+            extension
+          )
+        ) {
+          icon = "◉";
+        } else if (
+          extension ===
+          "md"
+        ) {
+          icon = "▤";
+        }
+
+        row.innerHTML =
+          `<span>${icon}</span><span>${escapeHtml(
+            baseName(file)
+          )}</span>`;
+
+        row.addEventListener(
+          "click",
+          () =>
+            openFile(file)
+        );
+
+        tree.appendChild(
+          row
+        );
+      }
+    );
+  }
+
+  function openFile(path) {
+    const value =
+      normalizePath(path);
+
+    if (
+      !studio.project.files[
+        value
+      ] &&
+      !Object.prototype.hasOwnProperty.call(
+        studio.project.files,
+        value
+      )
+    ) {
+      toast(
+        `File not found: ${value}`,
+        "error"
+      );
+
+      return;
+    }
+
+    studio.project.currentFile =
+      value;
+
+    const root =
+      document.getElementById(
+        ROOT_ID
+      );
+
+    if (!root) {
+      return;
+    }
+
+    root.querySelector(
+      "#adnova-v5-path"
+    ).textContent =
+      value;
+
+    const editor =
+      root.querySelector(
+        "#adnova-v5-code"
+      );
+
+    editor.value =
+      studio.project.files[
+        value
+      ] || "";
+
+    const extension =
+      baseName(value)
+        .split(".")
+        .pop()
+        .toLowerCase();
+
+    editor.classList.toggle(
+      "text-file",
+      ["md","txt","json"].includes(
+        extension
+      )
+    );
+
+    renderTree();
+    validateCurrentFile();
+  }
+
+  function saveEditor() {
+    const root =
+      document.getElementById(
+        ROOT_ID
+      );
+
+    if (!root) {
+      return;
+    }
+
+    const path =
+      studio.project.currentFile;
+
+    studio.project.files[path] =
+      root.querySelector(
+        "#adnova-v5-code"
+      ).value;
+
+    saveDraft();
+    refreshPreview();
+    validateCurrentFile();
+
+    toast(
+      `Saved ${path}`
+    );
+  }
+
+  function newFile() {
+    const name =
+      window.prompt(
+        "New file",
+        "/components/app.js"
+      );
+
+    if (!name) {
+      return;
+    }
+
+    const path =
+      normalizePath(name);
+
+    if (
+      path === "/" ||
+      Object.prototype.hasOwnProperty.call(
+        studio.project.files,
+        path
+      )
+    ) {
+      toast(
+        "That file already exists.",
+        "error"
+      );
+
+      return;
+    }
+
+    studio.project.files[path] =
+      "";
+
+    studio.project.folders.push(
+      parentPath(path)
+    );
+
+    studio.project.folders =
+      [
+        ...new Set(
+          studio.project.folders.map(
+            normalizePath
+          )
+        )
+      ];
+
+    studio.project.currentFile =
+      path;
+
+    saveDraft();
+
+    renderTree();
+    openFile(path);
+  }
+
+  function newFolder() {
+    const name =
+      window.prompt(
+        "New folder",
+        "/components"
+      );
+
+    if (!name) {
+      return;
+    }
+
+    const path =
+      normalizePath(name);
+
+    studio.project.folders =
+      [
+        ...new Set([
+          ...(studio.project.folders || []),
+          path
+        ])
+      ];
+
+    saveDraft();
+    renderTree();
+
+    toast(
+      `Created ${path}`
+    );
+  }
+
+  function newCodingChat() {
+    studio.project =
+      projectTemplate();
+
+    saveDraft();
+
+    renderAll();
+
+    switchPane(
+      "build"
+    );
+
+    toggleAi(false);
+    toggleTerminal(false);
+
+    terminalPrint(
+      "\n[Adnova] Coding workspace reset.\n"
+    );
+
+    toast(
+      "Coding workspace reset."
+    );
+  }
+
+  function saveProject() {
+    const projects =
+      loadProjects();
+
+    if (
+      !studio.project.id
+    ) {
+      const name =
+        window.prompt(
+          "Project name",
+          studio.project.name ===
+            "Untitled"
+            ? ""
+            : studio.project.name
+        );
+
+      if (!name) {
+        return;
+      }
+
+      studio.project.name =
+        name.trim().slice(
+          0,
+          80
+        );
+
+      studio.project.id =
+        `${Date.now()}-${Math.random()
+          .toString(36)
+          .slice(2,8)}`;
+    }
+
+    const current =
+      cleanProject(
+        studio.project
+      );
+
+    const index =
+      projects.findIndex(
+        project =>
+          project.id ===
+          current.id
+      );
+
+    if (
+      index >= 0
+    ) {
+      projects[index] =
+        current;
+    } else {
+      if (
+        projects.length >=
+        MAX_PROJECTS
+      ) {
+        toast(
+          "You already have 5 saved projects.",
+          "error"
+        );
+
+        return;
+      }
+
+      projects.unshift(
+        current
+      );
+    }
+
+    saveProjects(
+      projects
+    );
+
+    saveDraft();
+
+    document.querySelector(
+      "#adnova-v5-project-name"
+    ).textContent =
+      current.name;
+
+    toast(
+      `Project saved: ${current.name}`
+    );
+  }
+
+  function backToChat() {
+    document.body.classList.remove(
+      "adnova-v5-coding"
+    );
+
+    if (
+      typeof window.setCurrentMode ===
+      "function"
+    ) {
+      try {
+        window.setCurrentMode(
+          "off"
+        );
+      } catch {
+        /* normal chat still works */
+      }
+    }
+  }
+
+  function buildPreviewHtml() {
+    let html =
+      studio.project.files[
+        "/index.html"
+      ] ||
+      "<!doctype html><html><body><h1>No index.html</h1></body></html>";
+
+    const css =
+      studio.project.files[
+        "/style.css"
+      ] || "";
+
+    const js =
+      studio.project.files[
+        "/script.js"
+      ] || "";
+
+    html =
+      html.replace(
+        /<link[^>]+href=["'](?:\.\/|\/)?style\.css["'][^>]*>\s*/gi,
+        ""
+      );
+
+    html =
+      html.replace(
+        /<script[^>]+src=["'](?:\.\/|\/)?script\.js["'][^>]*>\s*<\/script>\s*/gi,
+        ""
+      );
+
+    const styleTag =
+      `<style>${css}</style>`;
+
+    const safeJs =
+      js.replace(
+        /<\/script/gi,
+        "<\\/script"
+      );
+
+    const scriptTag =
+      `<script>${safeJs}<\/script>`;
+
+    if (
+      /<\/head>/i.test(
+        html
+      )
+    ) {
+      html =
+        html.replace(
+          /<\/head>/i,
+          `${styleTag}</head>`
+        );
+    } else {
+      html =
+        `${styleTag}${html}`;
+    }
+
+    if (
+      /<\/body>/i.test(
+        html
+      )
+    ) {
+      html =
+        html.replace(
+          /<\/body>/i,
+          `${scriptTag}</body>`
+        );
+    } else {
+      html += scriptTag;
+    }
+
+    return html;
+  }
+
+  function refreshPreview() {
+    const frame =
+      document.querySelector(
+        "#adnova-v5-preview-frame"
+      );
+
+    if (!frame) {
+      return;
+    }
+
+    if (
+      previewUrl
+    ) {
+      URL.revokeObjectURL(
+        previewUrl
+      );
+    }
+
+    previewUrl =
+      URL.createObjectURL(
+        new Blob(
+          [
+            buildPreviewHtml()
+          ],
+          {
+            type:
+              "text/html"
+          }
+        )
+      );
+
+    frame.src =
+      previewUrl;
+
+    const status =
+      document.querySelector(
+        "#adnova-v5-preview-status"
+      );
+
+    if (status) {
+      status.textContent =
+        `Updated ${new Date()
+          .toLocaleTimeString()}`;
+    }
+  }
+
+  function openNewTab() {
+    const url =
+      URL.createObjectURL(
+        new Blob(
+          [
+            buildPreviewHtml()
+          ],
+          {
+            type:
+              "text/html"
+          }
+        )
+      );
+
+    const tab =
+      window.open(
+        url,
+        "_blank"
+      );
+
+    if (!tab) {
+      toast(
+        "The browser blocked the new tab.",
+        "error"
+      );
+    }
+
+    setTimeout(
+      () =>
+        URL.revokeObjectURL(
+          url
+        ),
+      10 * 60 * 1000
+    );
+  }
+
+  function createSnapshot() {
+    studio.project.snapshots =
+      [
+        {
+          createdAt:Date.now(),
+          files:
+            clone(
+              studio.project.files
+            ),
+          folders:
+            clone(
+              studio.project.folders
+            )
+        },
+        ...(studio.project.snapshots || [])
+      ].slice(
+        0,
+        10
+      );
+
+    saveDraft();
+    refreshPreview();
+
+    toast(
+      "Snapshot saved and preview refreshed."
+    );
+  }
+
+  function restoreSnapshot() {
+    const snapshot =
+      studio.project.snapshots?.[0];
+
+    if (!snapshot) {
+      toast(
+        "No snapshot exists.",
+        "error"
+      );
+
+      return;
+    }
+
+    studio.project.files =
+      clone(
+        snapshot.files
+      );
+
+    studio.project.folders =
+      clone(
+        snapshot.folders
+      );
+
+    saveDraft();
+
+    renderTree();
+
+    openFile(
+      studio.project.currentFile ||
+      "/index.html"
+    );
+
+    refreshPreview();
+
+    toast(
+      "Latest snapshot restored."
+    );
+  }
+
+  function toggleAi(force) {
+    const panel =
+      document.querySelector(
+        "#adnova-v5-ai-panel"
+      );
+
+    if (!panel) {
+      return;
+    }
+
+    const open =
+      typeof force ===
+      "boolean"
+        ? force
+        : !panel.classList.contains(
+            "open"
+          );
+
+    panel.classList.toggle(
+      "open",
+      open
+    );
+
+    if (open) {
+      document.querySelector(
+        "#adnova-v5-ai-input"
+      )?.focus();
+    }
+  }
+
+  function renderAi() {
+    const node =
+      document.querySelector(
+        "#adnova-v5-ai-messages"
+      );
+
+    if (!node) {
+      return;
+    }
+
+    node.innerHTML = "";
+
+    (
+      studio.project.ai ||
+      []
+    ).forEach(
+      message => {
+        const row =
+          document.createElement(
+            "div"
+          );
+
+        row.className =
+          `adnova-v5-ai-message ${
+            message.role === "user"
+              ? "user"
+              : ""
+          }`;
+
+        row.textContent =
+          message.content;
+
+        node.appendChild(
+          row
+        );
+      }
+    );
+
+    node.scrollTop =
+      node.scrollHeight;
+  }
+
+  async function askCodingAi() {
+    const input =
+      document.querySelector(
+        "#adnova-v5-ai-input"
+      );
+
+    const button =
+      document.querySelector(
+        "#adnova-v5-ai-send"
+      );
+
+    const prompt =
+      input?.value.trim();
+
+    if (
+      !prompt ||
+      !studio?.project
+    ) {
+      return;
+    }
+
+    input.value = "";
+    button.disabled = true;
+
+    studio.project.ai =
+      [
+        ...(studio.project.ai || []),
+        {
+          role:"user",
+          content:prompt
+        }
+      ].slice(-30);
+
+    renderAi();
+
+    try {
+      const settings =
+        json(
+          "adnova_settings_v1",
+          {}
+        );
+
+      const files =
+        getFiles()
+          .map(
+            path =>
+              `FILE: ${path}\n${studio.project.files[path]}`
+          )
+          .join(
+            "\n\n"
+          );
+
+      const messages = [
+        {
+          role:"user",
+          content:
+            "You are Adnova Coding AI inside a browser Codespace.\n" +
+            "You can create and edit project files.\n" +
+            "Return changed files using exactly:\n" +
+            "FILE: /path/file.ext\n" +
+            "```language\n" +
+            "file contents\n" +
+            "```\n" +
+            "Create folders by returning files inside them.\n" +
+            "Do not claim commands actually executed.\n" +
+            "npm, node, Socket.IO and server execution are virtual until a real Coding API is connected.\n" +
+            `CURRENT PROJECT:\n${files}`
+        },
+
+        ...(studio.project.ai || [])
+          .slice(-12)
+          .map(
+            message => ({
+              role:
+                message.role,
+              content:
+                message.content
+            })
+          )
+      ];
+
+      const response =
+        await fetch(
+          "/api/chat",
+          {
+            method:"POST",
+            headers:{
+              "Content-Type":
+                "application/json"
+            },
+            body:
+              JSON.stringify({
+                messages,
+                aiPreference:
+                  settings?.codeAgentPreference ||
+                  ""
+              })
+          }
+        );
+
+      const data =
+        await response
+          .json()
+          .catch(
+            () => ({})
+          );
+
+      if (!response.ok) {
+        throw new Error(
+          data?.error ||
+          `Request failed (${response.status})`
+        );
+      }
+
+      const reply =
+        String(
+          data?.reply ||
+          ""
+        ).trim();
+
+      if (!reply) {
+        throw new Error(
+          "Coding AI returned nothing."
+        );
+      }
+
+      studio.project.ai =
+        [
+          ...(studio.project.ai || []),
+          {
+            role:"assistant",
+            content:reply
+          }
+        ].slice(-30);
+
+      const changed =
+        applyAiFiles(
+          reply
+        );
+
+      saveDraft();
+
+      renderAi();
+      renderTree();
+
+      openFile(
+        studio.project.currentFile ||
+        "/index.html"
+      );
+
+      refreshPreview();
+      validateCurrentFile();
+
+      toast(
+        changed
+          ? `Coding AI updated ${changed} file(s).`
+          : "Coding AI replied without file blocks."
+      );
+
+    } catch (error) {
+      console.error(
+        "Coding AI:",
+        error
+      );
+
+      studio.project.ai =
+        [
+          ...(studio.project.ai || []),
+          {
+            role:"assistant",
+            content:
+              `Error: ${error.message}`
+          }
+        ].slice(-30);
+
+      renderAi();
+
+      toast(
+        error.message ||
+        "Coding AI failed.",
+        "error"
+      );
+
+    } finally {
+      button.disabled = false;
+    }
+  }
+
+  function applyAiFiles(reply) {
+    const changed =
+      [];
+
+    const pattern =
+      /FILE\s*:\s*([^\n`]+)\s*\n\s*```[^\n]*\n([\s\S]*?)```/gi;
+
+    let match;
+
+    while (
+      (match =
+        pattern.exec(reply))
+    ) {
+      const path =
+        normalizePath(
+          match[1].trim()
+        );
+
+      if (
+        path === "/" ||
+        path.includes("..")
+      ) {
+        continue;
+      }
+
+      studio.project.files[path] =
+        String(
+          match[2] ||
+          ""
+        ).trim();
+
+      const folder =
+        parentPath(path);
+
+      if (
+        folder !== "/"
+      ) {
+        studio.project.folders.push(
+          folder
+        );
+      }
+
+      changed.push(
+        path
+      );
+    }
+
+    if (
+      changed.length
+    ) {
+      studio.project.folders =
+        [
+          ...new Set(
+            studio.project.folders.map(
+              normalizePath
+            )
+          )
+        ];
+
+      studio.project.currentFile =
+        changed[0];
+    }
+
+    return changed.length;
+  }
+
+  function validateCurrentFile() {
+    const path =
+      studio?.project?.currentFile;
+
+    if (!path) {
+      return;
+    }
+
+    const code =
+      String(
+        studio.project.files[path] ||
+        ""
+      );
+
+    const extension =
+      baseName(path)
+        .split(".")
+        .pop()
+        .toLowerCase();
+
+    const issues =
+      [];
+
+    if (
+      [
+        "js",
+        "ts"
+      ].includes(extension)
+    ) {
+      let balance =
+        0;
+
+      for (
+        const character of code
+      ) {
+        if (
+          character === "{"
+        ) balance++;
+
+        if (
+          character === "}"
+        ) balance--;
+
+        if (
+          balance < 0
+        ) {
+          break;
+        }
+      }
+
+      if (
+        balance !== 0
+      ) {
+        issues.push(
+          "Braces are not balanced in this file."
+        );
+      }
+
+      if (
+        /(^|[^=!])===\s*;/.test(
+          code
+        )
+      ) {
+        issues.push(
+          "There appears to be an invalid comparison expression."
+        );
+      }
+    }
+
+    if (
+      extension ===
+      "html"
+    ) {
+      if (
+        !/<!doctype\s+html/i.test(
+          code
+        )
+      ) {
+        issues.push(
+          "This HTML file has no DOCTYPE declaration."
+        );
+      }
+
+      const openTags =
+        (
+          code.match(
+            /<([a-z][a-z0-9-]*)\b/gi
+          ) || []
+        ).length;
+
+      const closeTags =
+        (
+          code.match(
+            /<\/([a-z][a-z0-9-]*)>/gi
+          ) || []
+        ).length;
+
+      if (
+        Math.abs(
+          openTags -
+          closeTags
+        ) > 2
+      ) {
+        issues.push(
+          "Some HTML tags may be unclosed."
+        );
+      }
+    }
+
+    if (
+      extension ===
+      "css"
+    ) {
+      const opens =
+        (
+          code.match(
+            /{/g
+          ) || []
+        ).length;
+
+      const closes =
+        (
+          code.match(
+            /}/g
+          ) || []
+        ).length;
+
+      if (
+        opens !==
+        closes
+      ) {
+        issues.push(
+          "CSS braces are not balanced."
+        );
+      }
+    }
+
+    const issue =
+      document.querySelector(
+        "#adnova-v5-issue"
+      );
+
+    const issueText =
+      document.querySelector(
+        "#adnova-v5-issue-text"
+      );
+
+    const editor =
+      document.querySelector(
+        "#adnova-v5-code"
+      );
+
+    const hasIssue =
+      issues.length > 0;
+
+    issue?.classList.toggle(
+      "show",
+      hasIssue
+    );
+
+    editor?.classList.toggle(
+      "invalid",
+      hasIssue
+    );
+
+    if (issueText) {
+      issueText.textContent =
+        issues[0] ||
+        "";
+    }
+  }
+
+  async function debugCurrentFile() {
+    const issue =
+      document.querySelector(
+        "#adnova-v5-issue-text"
+      )?.textContent ||
+      "The current file may contain a problem.";
+
+    const confirmed =
+      window.confirm(
+        "This file appears to have an issue. Ask Coding AI to debug it?"
+      );
+
+    if (!confirmed) {
+      return;
+    }
+
+    toggleAi(true);
+
+    const input =
+      document.querySelector(
+        "#adnova-v5-ai-input"
+      );
+
+    input.value =
+      `Debug ${studio.project.currentFile}.\n\nDetected issue:\n${issue}\n\nReview the surrounding project files and return the corrected file using a FILE block.`;
+
+    await askCodingAi();
+  }
+
+  function toggleTerminal(force) {
+    const drawer =
+      document.querySelector(
+        "#adnova-v5-terminal"
+      );
+
+    if (!drawer) {
+      return;
+    }
+
+    terminalOpen =
+      typeof force ===
+      "boolean"
+        ? force
+        : !terminalOpen;
+
+    drawer.classList.toggle(
+      "open",
+      terminalOpen
+    );
+
+    if (
+      terminalOpen
+    ) {
+      document.querySelector(
+        "#adnova-v5-terminal-input"
+      )?.focus();
+    }
+  }
+
+  function terminalPrint(text) {
+    const log =
+      document.querySelector(
+        "#adnova-v5-terminal-log"
+      );
+
+    if (!log) {
+      return;
+    }
+
+    log.textContent +=
+      text;
+
+    log.scrollTop =
+      log.scrollHeight;
+  }
+
+  function updateTerminalPrompt() {
+    const cwd =
+      studio?.project?.cwd ||
+      "/";
+
+    const prompt =
+      document.querySelector(
+        "#adnova-v5-terminal-prompt"
+      );
+
+    const status =
+      document.querySelector(
+        "#adnova-v5-terminal-status"
+      );
+
+    if (prompt) {
+      prompt.textContent =
+        `${cwd} $`;
+    }
+
+    if (status) {
+      status.textContent =
+        cwd;
+    }
+  }
+
+  function terminalKeydown(event) {
+    if (
+      event.key !==
+      "Enter"
+    ) {
+      return;
+    }
+
+    event.preventDefault();
+
+    const input =
+      event.currentTarget;
+
+    const command =
+      input.value.trim();
+
+    input.value = "";
+
+    if (
+      command
+    ) {
+      runCommand(
+        command
+      );
+    }
+  }
+
+  function resolvePath(target) {
+    const raw =
+      String(
+        target ||
+        studio.project.cwd
+      );
+
+    if (
+      raw.startsWith("/")
+    ) {
+      return normalizePath(
+        raw
+      );
+    }
+
+    return normalizePath(
+      `${studio.project.cwd === "/" ? "" : studio.project.cwd}/${raw}`
+    );
+  }
+
+  function runCommand(raw) {
+    terminalPrint(
+      `${studio.project.cwd} $ ${raw}\n`
+    );
+
+    const parts =
+      raw.match(
+        /"[^"]*"|'[^']*'|[^\s]+/g
+      ) || [];
+
+    const command =
+      String(
+        parts.shift() ||
+        ""
+      )
+        .toLowerCase();
+
+    const args =
+      parts.map(
+        value =>
+          value.replace(
+            /^["']|["']$/g,
+            ""
+          )
+      );
+
+    switch (command) {
+
+      case "help":
+        terminalPrint(
+          "help\n" +
+          "pwd\n" +
+          "ls\n" +
+          "tree\n" +
+          "cd <folder>\n" +
+          "cat <file>\n" +
+          "touch <file>\n" +
+          "mkdir <folder>\n" +
+          "rm <file/folder>\n" +
+          "mv <from> <to>\n" +
+          "cp <from> <to>\n" +
+          "open <file>\n" +
+          "write <file> <text>\n" +
+          "save\n" +
+          "backup\n" +
+          "restore [number]\n" +
+          "snapshot\n" +
+          "preview\n" +
+          "projects\n" +
+          "new\n" +
+          "status\n" +
+          "history\n" +
+          "echo <text>\n" +
+          "find <text>\n" +
+          "grep <text>\n" +
+          "npm install\n" +
+          "npm start\n" +
+          "npm run <script>\n" +
+          "npm init\n" +
+          "npm --version\n" +
+          "node --version\n" +
+          "socket\n" +
+          "download\n" +
+          "clear\n"
+        );
+        break;
+
+      case "pwd":
+        terminalPrint(
+          `${studio.project.cwd}\n`
+        );
+        break;
+
+      case "ls":
+        terminalList(
+          args[0]
+        );
+        break;
+
+      case "tree":
+        terminalTree();
+        break;
+
+      case "cd":
+        terminalCd(
+          args[0] ||
+          "/"
+        );
+        break;
+
+      case "cat":
+        terminalCat(
+          args[0]
+        );
+        break;
+
+      case "touch":
+        terminalTouch(
+          args[0]
+        );
+        break;
+
+      case "mkdir":
+        terminalMkdir(
+          args
+        );
+        break;
+
+      case "rm":
+        terminalRm(
+          args[0]
+        );
+        break;
+
+      case "mv":
+        terminalMove(
+          args[0],
+          args[1]
+        );
+        break;
+
+      case "cp":
+        terminalCopy(
+          args[0],
+          args[1]
+        );
+        break;
+
+      case "open":
+        if (
+          args[0]
+        ) {
+          openFile(
+            resolvePath(
+              args[0]
+            )
+          );
+          switchPane(
+            "build"
+          );
+        }
+        break;
+
+      case "write":
+        terminalWrite(
+          args
+        );
+        break;
+
+      case "save":
+        saveEditor();
+        break;
+
+      case "backup":
+        backupProject();
+        break;
+
+      case "restore":
+        restoreBackup(
+          Number(
+            args[0] || 0
+          )
+        );
+        break;
+
+      case "snapshot":
+        createSnapshot();
+        break;
+
+      case "preview":
+        switchPane(
+          "preview"
+        );
+        break;
+
+      case "projects":
+        showProjects();
+        break;
+
+      case "new":
+        newCodingChat();
+        break;
+
+      case "status":
+        terminalStatus();
+        break;
+
+      case "history":
+        terminalPrint(
+          "Terminal history is active for this session.\n"
+        );
+        break;
+
+      case "echo":
+        terminalPrint(
+          `${args.join(" ")}\n`
+        );
+        break;
+
+      case "find":
+      case "grep":
+        searchFiles(
+          args.join(" ")
+        );
+        break;
+
+      case "npm":
+        terminalNpm(
+          args
+        );
+        break;
+
+      case "node":
+        if (
+          args[0] ===
+          "--version"
+        ) {
+          terminalPrint(
+            "v22.x (virtual runtime placeholder)\n"
+          );
+        } else {
+          terminalPrint(
+            "node execution is not connected yet. A future Coding API will provide the real runtime.\n"
+          );
+        }
+        break;
+
+      case "socket":
+        terminalPrint(
+          "Socket support is reserved for the future real Coding API.\n"
+        );
+        break;
+
+      case "download":
+        downloadProject();
+        break;
+
+      case "clear": {
+        const log =
+          document.querySelector(
+            "#adnova-v5-terminal-log"
+          );
+
+        if (log) {
+          log.textContent =
+            "";
+        }
+
+        break;
+      }
+
+      default:
+        terminalPrint(
+          `command not found: ${command}\n`
+        );
+    }
+
+    updateTerminalPrompt();
+  }
+
+  function terminalList(target) {
+    const base =
+      resolvePath(
+        target ||
+        studio.project.cwd
+      );
+
+    const rows = [];
+
+    (
+      studio.project.folders ||
+      []
+    ).forEach(
+      folder => {
+        if (
+          parentPath(folder) ===
+          base
+        ) {
+          rows.push(
+            `[DIR]  ${baseName(folder)}`
+          );
+        }
+      }
+    );
+
+    getFiles().forEach(
+      file => {
+        if (
+          parentPath(file) ===
+          base
+        ) {
+          rows.push(
+            `       ${baseName(file)}`
+          );
+        }
+      }
+    );
+
+    terminalPrint(
+      `${rows.join("\n") || "(empty)"}\n`
+    );
+  }
+
+  function terminalTree() {
+    terminalPrint(
+      "/\n" +
+      getFiles()
+        .map(
+          file =>
+            `  ${file}`
+        )
+        .join("\n") +
+      "\n"
+    );
+  }
+
+  function terminalCd(target) {
+    const next =
+      resolvePath(
+        target
+      );
+
+    if (
+      next !== "/" &&
+      !studio.project.folders.includes(
+        next
+      ) &&
+      !getFiles().some(
+        file =>
+          parentPath(file) ===
+          next
+      )
+    ) {
+      terminalPrint(
+        `cd: no such directory: ${next}\n`
+      );
+
+      return;
+    }
+
+    studio.project.cwd =
+      next;
+
+    saveDraft();
+  }
+
+  function terminalCat(target) {
+    if (!target) {
+      terminalPrint(
+        "cat: missing file\n"
+      );
+
+      return;
+    }
+
+    const path =
+      resolvePath(
+        target
+      );
+
+    if (
+      !Object.prototype.hasOwnProperty.call(
+        studio.project.files,
+        path
+      )
+    ) {
+      terminalPrint(
+        `cat: ${path}: no such file\n`
+      );
+
+      return;
+    }
+
+    terminalPrint(
+      `${studio.project.files[path]}\n`
+    );
+  }
+
+  function terminalTouch(target) {
+    if (!target) {
+      terminalPrint(
+        "touch: missing file name\n"
+      );
+
+      return;
+    }
+
+    const path =
+      resolvePath(
+        target
+      );
+
+    if (
+      !Object.prototype.hasOwnProperty.call(
+        studio.project.files,
+        path
+      )
+    ) {
+      studio.project.files[path] =
+        "";
+
+      studio.project.folders.push(
+        parentPath(path)
+      );
+
+      studio.project.folders =
+        [
+          ...new Set(
+            studio.project.folders
+              .map(
+                normalizePath
+              )
+          )
+        ];
+
+      saveDraft();
+      renderTree();
+    }
+
+    openFile(
+      path
+    );
+
+    terminalPrint(
+      `created ${path}\n`
+    );
+  }
+
+  function terminalMkdir(args) {
+    if (!args.length) {
+      terminalPrint(
+        "mkdir: missing folder name\n"
+      );
+
+      return;
+    }
+
+    const recursive =
+      args.includes("-p");
+
+    const target =
+      args.find(
+        value =>
+          value !== "-p"
+      );
+
+    const path =
+      resolvePath(
+        target
+      );
+
+    if (
+      recursive
+    ) {
+      let current = "/";
+
+      path
+        .split("/")
+        .filter(Boolean)
+        .forEach(
+          part => {
+            current =
+              normalizePath(
+                `${current}/${part}`
+              );
+
+            studio.project.folders.push(
+              current
+            );
+          }
+        );
+    } else {
+      studio.project.folders.push(
+        path
+      );
+    }
+
+    studio.project.folders =
+      [
+        ...new Set(
+          studio.project.folders.map(
+            normalizePath
+          )
+        )
+      ];
+
+    saveDraft();
+    renderTree();
+
+    terminalPrint(
+      `created ${path}\n`
+    );
+  }
+
+  function terminalRm(target) {
+    if (!target) {
+      terminalPrint(
+        "rm: missing path\n"
+      );
+
+      return;
+    }
+
+    const path =
+      resolvePath(
+        target
+      );
+
+    if (
+      Object.prototype.hasOwnProperty.call(
+        studio.project.files,
+        path
+      )
+    ) {
+      delete studio.project.files[
+        path
+      ];
+
+      saveDraft();
+
+      renderTree();
+
+      openFile(
+        getFiles()[0] ||
+        "/index.html"
+      );
+
+      terminalPrint(
+        `removed ${path}\n`
+      );
+
+      return;
+    }
+
+    studio.project.folders =
+      studio.project.folders.filter(
+        folder =>
+          folder !== path &&
+          !folder.startsWith(
+            `${path}/`
+          )
+      );
+
+    getFiles().forEach(
+      file => {
+        if (
+          file.startsWith(
+            `${path}/`
+          )
+        ) {
+          delete studio.project.files[
+            file
+          ];
+        }
+      }
+    );
+
+    saveDraft();
+    renderTree();
+
+    openFile(
+      getFiles()[0] ||
+      "/index.html"
+    );
+
+    terminalPrint(
+      `removed ${path}\n`
+    );
+  }
+
+  function terminalMove(
+    from,
+    to
+  ) {
+    if (
+      !from ||
+      !to
+    ) {
+      terminalPrint(
+        "mv: usage mv FROM TO\n"
+      );
+
+      return;
+    }
+
+    const source =
+      resolvePath(from);
+
+    const destination =
+      resolvePath(to);
+
+    if (
+      !Object.prototype.hasOwnProperty.call(
+        studio.project.files,
+        source
+      )
+    ) {
+      terminalPrint(
+        `mv: no such file: ${source}\n`
+      );
+
+      return;
+    }
+
+    studio.project.files[
+      destination
+    ] =
+      studio.project.files[
+        source
+      ];
+
+    delete studio.project.files[
+      source
+    ];
+
+    if (
+      studio.project.currentFile ===
+      source
+    ) {
+      studio.project.currentFile =
+        destination;
+    }
+
+    saveDraft();
+    renderTree();
+
+    openFile(
+      destination
+    );
+  }
+
+  function terminalCopy(
+    from,
+    to
+  ) {
+    if (
+      !from ||
+      !to
+    ) {
+      terminalPrint(
+        "cp: usage cp FROM TO\n"
+      );
+
+      return;
+    }
+
+    const source =
+      resolvePath(from);
+
+    const destination =
+      resolvePath(to);
+
+    if (
+      !Object.prototype.hasOwnProperty.call(
+        studio.project.files,
+        source
+      )
+    ) {
+      terminalPrint(
+        `cp: no such file: ${source}\n`
+      );
+
+      return;
+    }
+
+    studio.project.files[
+      destination
+    ] =
+      studio.project.files[
+        source
+      ];
+
+    saveDraft();
+    renderTree();
+
+    terminalPrint(
+      `copied ${source} -> ${destination}\n`
+    );
+  }
+
+  function terminalWrite(args) {
+    if (
+      args.length <
+      2
+    ) {
+      terminalPrint(
+        'write: usage write /file.txt "content"\n'
+      );
+
+      return;
+    }
+
+    const path =
+      resolvePath(
+        args.shift()
+      );
+
+    studio.project.files[path] =
+      args.join(" ");
+
+    studio.project.folders.push(
+      parentPath(path)
+    );
+
+    studio.project.folders =
+      [
+        ...new Set(
+          studio.project.folders.map(
+            normalizePath
+          )
+        )
+      ];
+
+    studio.project.currentFile =
+      path;
+
+    saveDraft();
+
+    renderTree();
+
+    openFile(
+      path
+    );
+
+    terminalPrint(
+      `wrote ${path}\n`
+    );
+  }
+
+  function terminalStatus() {
+    terminalPrint(
+      `project: ${studio.project.name}\n` +
+      `files: ${getFiles().length}\n` +
+      `folders: ${studio.project.folders.length}\n` +
+      `backups: ${(studio.project.backups || []).length}\n` +
+      `snapshots: ${(studio.project.snapshots || []).length}\n`
+    );
+  }
+
+  function terminalNpm(args) {
+    const sub =
+      String(
+        args[0] ||
+        ""
+      ).toLowerCase();
+
+    if (
+      sub ===
+      "install"
+    ) {
+      const npm =
+        json(
+          NPM_KEY,
+          {}
+        );
+
+      npm.installed =
+        true;
+
+      npm.installedAt =
+        Date.now();
+
+      localStorage.setItem(
+        NPM_KEY,
+        JSON.stringify(npm)
+      );
+
+      terminalPrint(
+        "npm install complete.\n" +
+        "Virtual dependency environment prepared for this project.\n"
+      );
+
+      toast(
+        "npm install complete."
+      );
+
+      return;
+    }
+
+    if (
+      sub ===
+      "start"
+    ) {
+      const npm =
+        json(
+          NPM_KEY,
+          {}
+        );
+
+      if (
+        !npm.installed
+      ) {
+        terminalPrint(
+          "npm start: run 'npm install' first.\n"
+        );
+
+        return;
+      }
+
+      terminalPrint(
+        "Starting project...\n"
+      );
+
+      showRunNotification();
+
+      return;
+    }
+
+    if (
+      sub ===
+      "run"
+    ) {
+      terminalPrint(
+        `npm run ${args.slice(1).join(" ") || "start"}: virtual script runner ready.\n`
+      );
+
+      return;
+    }
+
+    if (
+      sub ===
+      "init"
+    ) {
+      if (
+        !Object.prototype.hasOwnProperty.call(
+          studio.project.files,
+          "/package.json"
+        )
+      ) {
+        studio.project.files[
+          "/package.json"
+        ] =
+          JSON.stringify(
+            {
+              name:
+                studio.project.name
+                  .toLowerCase()
+                  .replace(
+                    /[^a-z0-9]+/g,
+                    "-"
+                  ),
+              version:"1.0.0",
+              scripts:{
+                start:"node server.js"
+              }
+            },
+            null,
+            2
+          );
+
+        saveDraft();
+        renderTree();
+      }
+
+      terminalPrint(
+        "package.json created.\n"
+      );
+
+      return;
+    }
+
+    if (
+      sub ===
+      "--version"
+    ) {
+      terminalPrint(
+        "10.8.x (virtual npm environment)\n"
+      );
+
+      return;
+    }
+
+    terminalPrint(
+      "npm: supported commands are install, start, run, init and --version.\n"
+    );
+  }
+
+  function showRunNotification() {
+    const existing =
+      document.querySelector(
+        "#adnova-v5-run-dialog"
+      );
+
+    existing?.remove();
+
+    const overlay =
+      document.createElement(
+        "div"
+      );
+
+    overlay.id =
+      "adnova-v5-run-dialog";
+
+    overlay.className =
+      "adnova-v5-run-dialog";
+
+    overlay.innerHTML = `
+      <div class="adnova-v5-run-card">
+
+        <h3>
+          Project started
+        </h3>
+
+        <p>
+          Your project is running in the Adnova preview environment.
+          Open it in a new browser tab?
+        </p>
+
+        <div class="adnova-v5-run-actions">
+
+          <button
+            class="adnova-v5-btn"
+            data-close
+          >
+            Not now
+          </button>
+
+          <button
+            class="adnova-v5-btn primary"
+            data-open
+          >
+            Open in New Tab
+          </button>
+
+        </div>
+
+      </div>
+    `;
+
+    document.body.appendChild(
+      overlay
+    );
+
+    overlay
+      .querySelector(
+        "[data-open]"
+      )
+      .addEventListener(
+        "click",
+        () => {
+          overlay.remove();
+
+          switchPane(
+            "preview"
+          );
+
+          openNewTab();
+        }
+      );
+
+    overlay
+      .querySelector(
+        "[data-close]"
+      )
+      .addEventListener(
+        "click",
+        () =>
+          overlay.remove()
+      );
+
+    setTimeout(
+      () => {
+        if (
+          overlay.isConnected
+        ) {
+          overlay.remove();
+        }
+      },
+      10000
+    );
+  }
+
+  function backupProject() {
+    studio.project.backups =
+      [
+        {
+          createdAt:
+            Date.now(),
+
+          files:
+            clone(
+              studio.project.files
+            ),
+
+          folders:
+            clone(
+              studio.project.folders
+            )
+        },
+        ...(studio.project.backups || [])
+      ].slice(
+        0,
+        MAX_BACKUPS
+      );
+
+    saveDraft();
+
+    terminalPrint(
+      "[backup] local backup created\n"
+    );
+
+    toast(
+      "Backup created."
+    );
+  }
+
+  function restoreBackup(index) {
+    const backup =
+      studio.project.backups?.[
+        Number(index) || 0
+      ];
+
+    if (!backup) {
+      terminalPrint(
+        "restore: backup not found\n"
+      );
+
+      return;
+    }
+
+    studio.project.files =
+      clone(
+        backup.files
+      );
+
+    studio.project.folders =
+      clone(
+        backup.folders
+      );
+
+    saveDraft();
+
+    renderTree();
+
+    openFile(
+      studio.project.currentFile ||
+      "/index.html"
+    );
+
+    refreshPreview();
+
+    terminalPrint(
+      "[restore] backup restored\n"
+    );
+  }
+
+  function searchFiles(query) {
+    if (!query) {
+      terminalPrint(
+        "search: missing text\n"
+      );
+
+      return;
+    }
+
+    let found = false;
+
+    getFiles().forEach(
+      file => {
+        const content =
+          String(
+            studio.project.files[
+              file
+            ] || ""
+          );
+
+        if (
+          content
+            .toLowerCase()
+            .includes(
+              query.toLowerCase()
+            )
+        ) {
+          terminalPrint(
+            `${file}\n`
+          );
+
+          found = true;
+        }
+      }
+    );
+
+    if (!found) {
+      terminalPrint(
+        "No matches.\n"
+      );
+    }
+  }
+
+  function showProjects() {
+    const projects =
+      loadProjects();
+
+    terminalPrint(
+      "\nPROJECTS\n"
+    );
+
+    if (!projects.length) {
+      terminalPrint(
+        "No saved projects.\n"
+      );
+
+      return;
+    }
+
+    projects.forEach(
+      (project, index) => {
+        terminalPrint(
+          `${index + 1}. ${project.name}\n`
+        );
+      }
+    );
+
+    terminalPrint(
+      "Use 'open-project <number>' after saving a project.\n"
+    );
+  }
+
+  function downloadProject() {
+    const blob =
+      new Blob(
+        [
+          JSON.stringify(
+            cleanProject(
+              studio.project
+            ),
+            null,
+            2
+          )
+        ],
+        {
+          type:
+            "application/json"
+        }
+      );
+
+    const url =
+      URL.createObjectURL(
+        blob
+      );
+
+    const link =
+      document.createElement(
+        "a"
+      );
+
+    link.href =
+      url;
+
+    link.download =
+      `${studio.project.name
+        .replace(
+          /[^a-z0-9-_]+/gi,
+          "-"
+        ) || "adnova-project"}.adnova.json`;
+
+    link.click();
+
+    setTimeout(
+      () =>
+        URL.revokeObjectURL(
+          url
+        ),
+      5000
+    );
+  }
+
+  function updateStorage() {
+    const node =
+      document.querySelector(
+        "#adnova-v5-storage"
+      );
+
+    if (!node) {
+      return;
+    }
+
+    let bytes = 0;
+
+    Object.entries(
+      studio.project.files
+    ).forEach(
+      ([path, content]) => {
+        bytes +=
+          (
+            path.length +
+            String(
+              content || ""
+            ).length
+          ) * 2;
+      }
+    );
+
+    node.innerHTML =
+      `<strong>Project storage</strong><br>${(
+        bytes / 1024
+      ).toFixed(1)} KB<br><span style="color:#838995;">Live local project usage</span>`;
+  }
+
+  window.adnovaCodingStudioV5 =
+    {
+      sync,
+      mount,
+      unmount
+    };
+
+  window.updateCodingWorkspaceState =
+    function () {
+      sync();
+    };
+
+  installStyles();
+
+  setInterval(
+    () => {
+      if (
+        document.body.classList.contains(
+          "adnova-v5-coding"
+        )
+      ) {
+        updateStorage();
+        updateTerminalPrompt();
+      }
+    },
+    1000
+  );
+
+  setTimeout(
+    sync,
+    0
+  );
+
+})();

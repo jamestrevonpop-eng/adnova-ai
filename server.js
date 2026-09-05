@@ -88,7 +88,10 @@ app.get("/api/health", (req, res) => {
 
 app.post("/api/chat", chatLimiter, async (req, res) => {
   try {
-    const { messages } = req.body;
+    const {
+      messages,
+      aiPreference
+    } = req.body;
 
     if (!Array.isArray(messages) || messages.length === 0) {
       return res.status(400).json({
@@ -167,7 +170,11 @@ app.post("/api/chat", chatLimiter, async (req, res) => {
       });
     }
 
-    const reply = await routeMessage(messages);
+    const reply =
+      await routeMessage(
+        messages,
+        aiPreference
+      );
 
     res.json({
       reply
@@ -203,7 +210,10 @@ app.post("/api/chat/stream", chatLimiter, async (req, res) => {
   });
 
   try {
-    const { messages } = req.body;
+    const {
+      messages,
+      aiPreference
+    } = req.body;
 
     if (!Array.isArray(messages) || messages.length === 0) {
       return res.status(400).json({
@@ -295,7 +305,9 @@ app.post("/api/chat/stream", chatLimiter, async (req, res) => {
             content: chunk
           })}\n\n`
         );
-      }
+      },
+      undefined,
+      aiPreference
     );
 
     if (

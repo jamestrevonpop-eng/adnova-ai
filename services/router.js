@@ -127,7 +127,10 @@ function getMode(messages) {
     : "off";
 }
 
-function applyMode(messages) {
+function applyMode(
+  messages,
+  aiPreference = ""
+) {
   const mode = getMode(messages);
 
   const instructions = {
@@ -153,7 +156,25 @@ function applyMode(messages) {
       "ACTIVE AI MODE: SCIENCE. Explain accurately using scientific terminology, evidence-based reasoning, and clear cause-and-effect."
   };
 
-  const instruction = instructions[mode];
+  let instruction =
+    instructions[mode];
+
+  if (mode === "coding") {
+    const safePreference =
+      String(aiPreference || "")
+        .trim()
+        .slice(0, 4000);
+
+    if (safePreference) {
+      instruction =
+        `${instruction}
+
+CODING AGENT PREFERENCES:
+${safePreference}
+
+Treat these as user preferences for how to approach Coding tasks. They do not override safety, system instructions, or the user's current request.`;
+    }
+  }
 
   if (!instruction) {
     return messages;
@@ -346,8 +367,15 @@ function buildSearchContext(searchResult) {
     .join("\n");
 }
 
-async function prepareMessages(messages) {
-  messages = applyMode(messages);
+async function prepareMessages(
+  messages,
+  aiPreference = ""
+) {
+  messages =
+    applyMode(
+      messages,
+      aiPreference
+    );
 
   /*
   |--------------------------------------------------------------------------
@@ -547,9 +575,15 @@ async function prepareMessages(messages) {
   }
 }
 
-async function routeMessage(messages) {
+async function routeMessage(
+  messages,
+  aiPreference = ""
+) {
   const prepared =
-    await prepareMessages(messages);
+    await prepareMessages(
+      messages,
+      aiPreference
+    );
 
   const response =
     await generateResponse(
@@ -565,10 +599,14 @@ async function routeMessage(messages) {
 async function routeStream(
   messages,
   onChunk,
-  signal
+  signal,
+  aiPreference = ""
 ) {
   const prepared =
-    await prepareMessages(messages);
+    await prepareMessages(
+      messages,
+      aiPreference
+    );
 
   const response =
     await streamResponse(

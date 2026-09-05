@@ -88,18 +88,8 @@ function setCurrentMode(mode) {
   updateModeOptions();
   updateModeComposerState();
 
-  if (typeof window.adnovaCodingStudioV4Update === "function") {
-    try {
-      window.adnovaCodingStudioV4Update();
-    } catch (error) {
-      console.error("Adnova Coding Studio update failed:", error);
-    }
-  } else if (typeof updateCodingWorkspaceState === "function") {
-    try {
-      updateCodingWorkspaceState();
-    } catch (error) {
-      console.error("Legacy Coding workspace update failed:", error);
-    }
+  if (typeof updateCodingWorkspaceState === "function") {
+    updateCodingWorkspaceState();
   }
 
   updateActiveModeIndicator();
@@ -10222,7 +10212,7 @@ updateNewChatControlsForMode();
     }
   }
 
-  if (typeof window.refreshCacheWindow === "function") { window.refreshCacheWindow(); }
+  refreshCacheWindow();
 
   /*
    * ---------------------------------------------------------
@@ -10337,7 +10327,7 @@ updateNewChatControlsForMode();
   }
 
   async function getAdnovaLiveCacheStats() {
-    if (typeof window.refreshCacheWindow === "function") { window.refreshCacheWindow(); }
+    refreshCacheWindow();
 
     const bytes =
       await measureAdnovaCacheBytes();
@@ -10481,7 +10471,7 @@ updateNewChatControlsForMode();
    */
 
   async function resetAdnovaCache() {
-    if (typeof window.refreshCacheWindow === "function") { window.refreshCacheWindow(); }
+    refreshCacheWindow();
 
     if (
       cacheMeta.resetsUsed >=
@@ -13999,7 +13989,7 @@ ${memoryInstruction()}`;
 
   setInterval(
     () => {
-      if (typeof window.refreshCacheWindow === "function") { window.refreshCacheWindow(); }
+      refreshCacheWindow();
       renderLiveCachePanel();
       updateProjectsButtonState();
     },
@@ -17738,80 +17728,3 @@ Built inside Adnova Coding.
     1000
   );
 })();
-
-
-/* ADNOVA CACHE COMPATIBILITY */
-
-window.refreshCacheWindow = function refreshCacheWindow() {
-  try {
-    const now = Date.now();
-
-    const key = "adnova_cache_meta_v1";
-
-    let meta = {};
-
-    try {
-      meta = JSON.parse(
-        localStorage.getItem(key) || "{}"
-      );
-    } catch {
-      meta = {};
-    }
-
-    if (
-      !meta.windowStart ||
-      now - Number(meta.windowStart) >= 24 * 60 * 60 * 1000
-    ) {
-      meta = {
-        windowStart: now,
-        resetsUsed: 0
-      };
-
-      try {
-        localStorage.setItem(
-          key,
-          JSON.stringify(meta)
-        );
-      } catch {
-        /* storage unavailable */
-      }
-    }
-
-    if (
-      typeof window.renderLiveCachePanel ===
-      "function"
-    ) {
-      try {
-        window.renderLiveCachePanel();
-      } catch (error) {
-        console.debug(
-          "Live cache panel refresh skipped:",
-          error
-        );
-      }
-    }
-
-    if (
-      typeof window.refreshAdnovaStorageStats ===
-      "function"
-    ) {
-      try {
-        window.refreshAdnovaStorageStats();
-      } catch (error) {
-        console.debug(
-          "Storage refresh skipped:",
-          error
-        );
-      }
-    }
-
-    return meta;
-  } catch (error) {
-    console.debug(
-      "Cache compatibility refresh skipped:",
-      error
-    );
-
-    return null;
-  }
-};
